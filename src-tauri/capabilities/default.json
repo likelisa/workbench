@@ -1,0 +1,1 @@
+{"identifier":"default","description":"Local personal workbench","windows":["main"],"permissions":["core:default","sql:default","sql:allow-execute","dialog:default"]}

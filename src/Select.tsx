@@ -1,0 +1,24 @@
+import { Children, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, Check } from 'lucide-react';
+
+type Props=Omit<SelectHTMLAttributes<HTMLSelectElement>,'children'> & {children:ReactNode};
+export default function Select({children,value,defaultValue,onChange,className='',disabled,...props}:Props){
+  const [local,setLocal]=useState(String(defaultValue??'')),[open,setOpen]=useState(false),[query,setQuery]=useState(''),[active,setActive]=useState(0),[position,setPosition]=useState({left:0,top:0,width:240,maxHeight:320});
+  const button=useRef<HTMLButtonElement>(null),menu=useRef<HTMLDivElement>(null);const uid=useId();
+  const options=Children.toArray(children).filter(isValidElement).map(child=>{const p=child.props as {value?:string|number;children:ReactNode;disabled?:boolean};return {value:String(p.value??''),label:Children.toArray(p.children).join(''),disabled:p.disabled};});
+  const selected=String(value??local),label=options.find(item=>item.value===selected)?.label||'请选择';
+  const filtered=options.filter(item=>item.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  const close=()=>{setOpen(false);button.current?.focus();};
+  const choose=(index:number)=>{const item=filtered[index];if(!item||item.disabled)return;setLocal(item.value);onChange?.({target:{value:item.value},currentTarget:{value:item.value}} as React.ChangeEvent<HTMLSelectElement>);close();};
+  useLayoutEffect(()=>{if(!open)return;const locate=()=>{const r=button.current?.getBoundingClientRect();if(!r)return;const room=window.innerHeight-r.bottom-12,up=room<200&&r.top>room;const maxHeight=Math.min(320,Math.max(80,(up?r.top-12:room)));const width=Math.min(window.innerWidth-24,Math.max(r.width,className.includes('status')?160:240));setPosition({left:Math.max(12,Math.min(r.left,window.innerWidth-width-12)),top:up?Math.max(12,r.top-Math.min(maxHeight,options.length*44+(options.length>8?50:0)+12)-6):r.bottom+6,width,maxHeight});};locate();window.addEventListener('resize',locate);window.addEventListener('scroll',locate,true);return()=>{window.removeEventListener('resize',locate);window.removeEventListener('scroll',locate,true);};},[open,className]);
+  useEffect(()=>{if(!open)return;setQuery('');setActive(Math.max(0,options.findIndex(item=>item.value===selected)));const outside=(event:PointerEvent)=>{if(!button.current?.contains(event.target as Node)&&!menu.current?.contains(event.target as Node))setOpen(false);};document.addEventListener('pointerdown',outside);menu.current?.focus();return()=>document.removeEventListener('pointerdown',outside);},[open]);
+  useEffect(()=>{menu.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({block:'nearest'});},[active]);
+  const keys=(event:React.KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();close();}else if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setActive(previous=>{let next=previous;for(let i=0;i<filtered.length;i++){next=(next+(event.key==='ArrowDown'?1:-1)+filtered.length)%filtered.length;if(!filtered[next]?.disabled)break;}return next;});}else if(event.key==='Enter'){event.preventDefault();choose(active);}else if(event.key==='Tab')setOpen(false);};
+  return <><button ref={button} type="button" className={`app-select ${className} ${selected===''?'placeholder':''}`} disabled={disabled} title={props.title||label} aria-label={props['aria-label']||label} role="combobox" aria-expanded={open} aria-controls={uid} aria-haspopup="listbox" onClick={()=>setOpen(previous=>!previous)} onKeyDown={event=>{if(['ArrowDown','ArrowUp','Enter',' '].includes(event.key)){event.preventDefault();setOpen(true);}}}><span>{label}</span><ChevronDown size={16}/></button>{open&&createPortal(<div ref={menu} className="select-popup" style={position} tabIndex={-1} onKeyDown={keys}>
+    {options.length>8&&<input className="select-search" aria-label="搜索选项" placeholder="搜索选项…" value={query} onChange={event=>{setQuery(event.target.value);setActive(0);}}/>}
+    <div role="listbox" id={uid} aria-label={props['aria-label']||'选项'} aria-activedescendant={`${uid}-${active}`}>
+      {filtered.map((item,index)=><button key={`${item.value}-${index}`} id={`${uid}-${index}`} type="button" role="option" aria-selected={item.value===selected} disabled={item.disabled} data-index={index} className={`${index===active?'active':''} ${item.value===selected?'selected':''}`} onPointerMove={()=>setActive(index)} onClick={()=>choose(index)}><span>{item.label}</span>{item.value===selected&&<Check size={16}/>}</button>)}
+      {!filtered.length&&<p className="select-empty">无匹配选项</p>}
+    </div></div>,document.body)}</>;
+}
