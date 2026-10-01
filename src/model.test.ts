@@ -43,7 +43,7 @@ describe('任务与时间统计',()=>{
 
 describe('历史情况分组',()=>{
   it('第 84 天仍属于进行中的周期，次日按结束年份归档',()=>{
-    const cycle={id:'cross-year',title:'跨年计划',start_date:'2026-10-26',created_at:''};
+    const cycle={id:'cross-year',title:'跨年计划',start_date:'2026-10-26',review:'',created_at:''};
     const data={cycles:[cycle],annualGoals:[],assignments:[],dayTasks:[]} as unknown as Data;
     expect(cycleEndDate(cycle)).toBe('2027-01-17');
     expect(historyYearGroups(data,'2027-01-17')[0].cycles).toHaveLength(0);
@@ -79,7 +79,7 @@ describe('日程时间维度',()=>{
 });
 
 describe('周任务待办池',()=>{
-  const makeData=()=>({...EMPTY,cycles:[{id:'cycle',title:'计划',start_date:'2026-09-30',created_at:''}],assignments:[
+    const makeData=()=>({...EMPTY,cycles:[{id:'cycle',title:'计划',start_date:'2026-09-30',review:'',created_at:''}],assignments:[
     {id:'shared',cycle_id:'cycle',task_id:'t',commitment:'持续推进',status:'todo' as const,review:'共用复盘',created_at:''},
     {id:'pool',cycle_id:'cycle',task_id:'t',commitment:'暂未安排',status:'todo' as const,review:'',created_at:''}
   ],assignmentWeeks:[{assignment_id:'shared',week_no:1},{assignment_id:'shared',week_no:3}]});

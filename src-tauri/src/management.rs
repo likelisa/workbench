@@ -118,7 +118,7 @@ pub fn batch_create(app:AppHandle,kind:String,rows:Vec<BatchRow>)->Result<usize,
 mod tests {
  use super::*;
  const SCHEMA:&str="PRAGMA foreign_keys=ON;
- CREATE TABLE cycles(id TEXT PRIMARY KEY,title TEXT,start_date TEXT,created_at TEXT);
+ CREATE TABLE cycles(id TEXT PRIMARY KEY,title TEXT,start_date TEXT,review TEXT NOT NULL DEFAULT '',created_at TEXT);
  CREATE TABLE directions(id TEXT PRIMARY KEY,title TEXT,created_at TEXT);
  CREATE TABLE annual_goals(id TEXT PRIMARY KEY,direction_id TEXT REFERENCES directions(id),title TEXT NOT NULL,year INTEGER NOT NULL,completed INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL);
  CREATE TABLE cycle_goals(id TEXT PRIMARY KEY,cycle_id TEXT REFERENCES cycles(id),annual_goal_id TEXT REFERENCES annual_goals(id));
@@ -129,12 +129,29 @@ mod tests {
  CREATE TABLE categories(id TEXT PRIMARY KEY);
  CREATE TABLE day_tasks(id TEXT PRIMARY KEY,date TEXT,title TEXT,status TEXT,assignment_id TEXT REFERENCES week_assignments(id),task_id TEXT REFERENCES tasks(id),project_id TEXT,scheduled_start_at TEXT,scheduled_end_at TEXT,scheduled_category_id TEXT REFERENCES categories(id),created_at TEXT);
  CREATE TABLE time_entries(id TEXT PRIMARY KEY,start_at TEXT,end_at TEXT,title TEXT,category_id TEXT REFERENCES categories(id),day_task_id TEXT REFERENCES day_tasks(id),project_id TEXT,task_id TEXT REFERENCES tasks(id),created_at TEXT);
- INSERT INTO directions VALUES('dir','方向',''); INSERT INTO annual_goals VALUES('a','dir','目标',2026,1,''); INSERT INTO cycles VALUES('c','周期','2026-10-01',''); INSERT INTO tasks(id,title,cycle_id,annual_goal_id,status,created_at) VALUES('t','任务','c','a','todo',''); INSERT INTO categories VALUES('cat');";
+ INSERT INTO directions VALUES('dir','方向',''); INSERT INTO annual_goals VALUES('a','dir','目标',2026,1,''); INSERT INTO cycles VALUES('c','周期','2026-10-01','',''); INSERT INTO tasks(id,title,cycle_id,annual_goal_id,status,created_at) VALUES('t','任务','c','a','todo',''); INSERT INTO categories VALUES('cat');";
  fn database()->Connection{let c=Connection::open_in_memory().unwrap();c.execute_batch(SCHEMA).unwrap();let src=include_str!("../../src/db.ts");let begin=src.find("CREATE TRIGGER IF NOT EXISTS create_time_entry_for_timed_day_task").unwrap();let end=src[begin..].find("END\");").unwrap()+3;c.execute_batch(&src[begin..begin+end]).unwrap();c}
  fn row(v:Value)->BatchRow{BatchRow{values:v.as_object().unwrap().clone(),weeks:vec![]}}
  fn timed(uid:&str,start:&str,end:&str)->BatchRow{row(serde_json::json!({"id":uid,"title":"面试","date":"2026-10-01","status":"todo","created_at":"now","scheduled_start_at":start,"scheduled_end_at":end,"scheduled_category_id":"cat","assignment_id":null,"task_id":null,"project_id":null}))}
+ #[test] fn cycle_review_column_defaults_and_updates(){
+  let c=database();
+  let columns:i64=c.query_row("SELECT COUNT(*) FROM pragma_table_info('cycles') WHERE name='review'",[],|r|r.get(0)).unwrap();
+  assert_eq!(columns,1);
+  c.execute("INSERT INTO cycles VALUES('new','新周期','2026-01-01','','')",[]).unwrap();
+  c.execute("UPDATE cycles SET review='整体完成良好' WHERE id='new'",[]).unwrap();
+  assert_eq!(c.query_row("SELECT review FROM cycles WHERE id='new'",[],|r|r.get::<_,String>(0)).unwrap(),"整体完成良好");
+ }
  #[test] fn batch_failure_rolls_back_every_row(){let mut c=database();let result=insert_rows(&mut c,"direction",vec![row(serde_json::json!({"id":"one","title":"有效","created_at":"now"})),row(serde_json::json!({"id":"two","title":"","created_at":"now"}))]);assert!(result.unwrap_err().contains("第 2 行"));assert_eq!(c.query_row("SELECT COUNT(*) FROM directions WHERE id='one'",[],|r|r.get::<_,i64>(0)).unwrap(),0);}
  #[test] fn timing_conflict_rolls_back_tasks_and_entries(){let mut c=database();let start="2026-10-01T15:00:00.000Z";let end="2026-10-02T00:00:00.000Z";let result=insert_rows(&mut c,"dayTask",vec![timed("one",start,end),timed("two","2026-10-01T16:00:00.000Z",end)]);assert!(result.unwrap_err().contains("第 2 行"));for table in ["day_tasks","time_entries"]{assert_eq!(c.query_row(&format!("SELECT COUNT(*) FROM {table}"),[],|r|r.get::<_,i64>(0)).unwrap(),0);}assert_eq!(insert_rows(&mut c,"dayTask",vec![timed("night",start,end)]).unwrap(),1);assert!(insert_rows(&mut c,"dayTask",vec![timed("conflict",start,end)]).is_err());assert_eq!(c.query_row("SELECT COUNT(*) FROM time_entries",[],|r|r.get::<_,i64>(0)).unwrap(),1);}
  #[test] fn deleting_parents_preserves_records(){let mut c=database();c.execute_batch("INSERT INTO week_assignments VALUES('w','t','c','周任务','doing','复盘',''); INSERT INTO assignment_weeks VALUES('w',1); INSERT INTO day_tasks(id,date,title,status,assignment_id,task_id,created_at) VALUES('d','2026-10-01','日任务','todo','w','t',''); INSERT INTO time_entries VALUES('e','start','end','记录','cat','d',NULL,'t','');").unwrap();delete_direction_in(&mut c,"dir").unwrap();assert_eq!(c.query_row("SELECT completed FROM annual_goals WHERE id='a' AND direction_id IS NULL",[],|r|r.get::<_,i64>(0)).unwrap(),1);delete_cycle_in(&mut c,"c").unwrap();assert_eq!(c.query_row("SELECT COUNT(*) FROM tasks WHERE id='t' AND cycle_id IS NULL AND annual_goal_id='a'",[],|r|r.get::<_,i64>(0)).unwrap(),1);assert_eq!(c.query_row("SELECT COUNT(*) FROM week_assignments WHERE id='w' AND cycle_id IS NULL",[],|r|r.get::<_,i64>(0)).unwrap(),1);assert_eq!(c.query_row("SELECT COUNT(*) FROM assignment_weeks",[],|r|r.get::<_,i64>(0)).unwrap(),0);assert_eq!(c.query_row("SELECT assignment_id FROM day_tasks WHERE id='d'",[],|r|r.get::<_,String>(0)).unwrap(),"w");assert_eq!(c.query_row("SELECT day_task_id FROM time_entries WHERE id='e'",[],|r|r.get::<_,String>(0)).unwrap(),"d");}
+ #[test] fn calendar_creation_is_atomic_with_placement(){
+  let mut c=database();
+  let make=|uid:&str,weeks:Vec<i64>|BatchRow{values:serde_json::json!({"id":uid,"task_id":"t","cycle_id":"c","commitment":"日程新增","status":"todo","review":"复盘","created_at":"now"}).as_object().unwrap().clone(),weeks};
+  assert!(insert_rows(&mut c,"assignment",vec![make("bad",vec![1,13])]).is_err());
+  assert_eq!(c.query_row("SELECT COUNT(*) FROM week_assignments WHERE id='bad'",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+  assert_eq!(c.query_row("SELECT COUNT(*) FROM assignment_weeks WHERE assignment_id='bad'",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+  assert_eq!(insert_rows(&mut c,"assignment",vec![make("good",vec![2])]).unwrap(),1);
+  assert_eq!(c.query_row("SELECT week_no FROM assignment_weeks WHERE assignment_id='good'",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+ }
  #[test] fn migration_keeps_ids_and_can_restart(){let dir=std::env::temp_dir().join(format!("workbench-migration-{}",chrono::Utc::now().timestamp_nanos_opt().unwrap()));std::fs::create_dir_all(&dir).unwrap();let path=dir.join("workbench.db");let c=Connection::open(&path).unwrap();let old=SCHEMA.replace("direction_id TEXT REFERENCES","direction_id TEXT NOT NULL REFERENCES").replace("task_id TEXT NOT NULL REFERENCES tasks(id),cycle_id TEXT REFERENCES","task_id TEXT NOT NULL REFERENCES tasks(id),cycle_id TEXT NOT NULL REFERENCES");c.execute_batch(&old).unwrap();c.execute_batch("INSERT INTO week_assignments VALUES('w','t','c','周任务','doing','复盘',''); INSERT INTO assignment_weeks VALUES('w',1); INSERT INTO day_tasks(id,date,assignment_id) VALUES('d','2026-10-01','w'); CREATE TRIGGER sync_week_cycle_on_task_change AFTER UPDATE OF cycle_id ON tasks BEGIN UPDATE week_assignments SET cycle_id=NEW.cycle_id WHERE task_id=NEW.id; END;").unwrap();drop(c);migrate(&path,&dir).unwrap();migrate(&path,&dir).unwrap();let c=Connection::open(&path).unwrap();assert_eq!(c.query_row("SELECT assignment_id FROM day_tasks WHERE id='d'",[],|r|r.get::<_,String>(0)).unwrap(),"w");assert_eq!(c.query_row("SELECT completed FROM annual_goals WHERE id='a'",[],|r|r.get::<_,i64>(0)).unwrap(),1);let invalid:i64=c.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check",[],|r|r.get(0)).unwrap();assert_eq!(invalid,0);drop(c);std::fs::remove_dir_all(dir).unwrap();}
 }

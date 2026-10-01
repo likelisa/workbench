@@ -1,5 +1,5 @@
 export type Status = 'todo' | 'doing' | 'done' | 'missed';
-export type Cycle = { id: string; title: string; start_date: string; created_at: string };
+export type Cycle = { id: string; title: string; start_date: string; created_at: string; review: string };
 export type Direction = { id: string; title: string; created_at: string };
 export type AnnualGoal = { id: string; direction_id: string | null; title: string; year: number; completed: number; created_at: string };
 export type Task = { id: string; cycle_goal_id: string | null; project_id: string | null; cycle_id: string | null; annual_goal_id: string | null; title: string; status: Status; due_date: string | null; created_at: string };

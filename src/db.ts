@@ -6,7 +6,7 @@ let connection: Database | null = null;
 let initialization: Promise<void> | null = null;
 // Historical tables and columns remain so existing local databases can be migrated without losing linked records.
 const schema = [
-  'CREATE TABLE IF NOT EXISTS cycles (id TEXT PRIMARY KEY, title TEXT NOT NULL, start_date TEXT NOT NULL, created_at TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS cycles (id TEXT PRIMARY KEY, title TEXT NOT NULL, start_date TEXT NOT NULL, review TEXT NOT NULL DEFAULT \'\', created_at TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS directions (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS annual_goals (id TEXT PRIMARY KEY, direction_id TEXT REFERENCES directions(id), title TEXT NOT NULL, year INTEGER NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS cycle_goals (id TEXT PRIMARY KEY, cycle_id TEXT NOT NULL REFERENCES cycles(id), annual_goal_id TEXT NOT NULL REFERENCES annual_goals(id), title TEXT NOT NULL, created_at TEXT NOT NULL)',
@@ -41,6 +41,8 @@ async function initializeDb() {
   if(!columns.some(x=>x.name==='annual_goal_id')) await c.execute('ALTER TABLE tasks ADD COLUMN annual_goal_id TEXT REFERENCES annual_goals(id)');
   const annualColumns=await c.select<{name:string}[]>('PRAGMA table_info(annual_goals)');
   if(!annualColumns.some(x=>x.name==='completed')) await c.execute('ALTER TABLE annual_goals ADD COLUMN completed INTEGER NOT NULL DEFAULT 0');
+  const cycleColumns=await c.select<{name:string}[]>('PRAGMA table_info(cycles)');
+  if(!cycleColumns.some(x=>x.name==='review')) await c.execute("ALTER TABLE cycles ADD COLUMN review TEXT NOT NULL DEFAULT ''");
   for(const table of ['day_tasks','time_entries','recurrences']) {
     const fields=await c.select<{name:string}[]>(`PRAGMA table_info(${table})`);
     if(!fields.some(x=>x.name==='task_id')) await c.execute(`ALTER TABLE ${table} ADD COLUMN task_id TEXT REFERENCES tasks(id)`);
