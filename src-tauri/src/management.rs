@@ -66,10 +66,10 @@ fn text<'a>(v:&'a Map<String,Value>,key:&str)->&'a str{v.get(key).and_then(Value
 fn insert_rows(c:&mut Connection,kind:&str,rows:Vec<BatchRow>)->Result<usize,String>{
     let (table,allowed,required)=match kind{
         "direction"=>("directions","id,title,created_at","id,title,created_at"),
-        "annual"=>("annual_goals","id,title,direction_id,year,completed,created_at","id,title,direction_id,created_at"),
+        "annual"=>("annual_goals","id,title,direction_id,year,completed,status,created_at","id,title,direction_id,created_at"),
         "task"=>("tasks","id,title,annual_goal_id,cycle_id,due_date,status,created_at","id,title,annual_goal_id,cycle_id,status,created_at"),
-        "assignment"=>("week_assignments","id,task_id,cycle_id,commitment,status,review,created_at","id,task_id,cycle_id,commitment,status,created_at"),
-        "dayTask"=>("day_tasks","id,date,title,status,assignment_id,task_id,project_id,scheduled_start_at,scheduled_end_at,scheduled_category_id,created_at","id,date,title,status,created_at"),
+        "assignment"=>("week_assignments","id,task_id,cycle_id,commitment,status,review,priority,created_at","id,task_id,cycle_id,commitment,status,created_at"),
+        "dayTask"=>("day_tasks","id,date,title,status,assignment_id,task_id,project_id,scheduled_start_at,scheduled_end_at,scheduled_category_id,priority,created_at","id,date,title,status,created_at"),
         _=>return Err("不支持的批量类型".into())
     };
     if rows.is_empty(){return Err("请填写至少一行".into());}

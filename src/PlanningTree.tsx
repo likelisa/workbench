@@ -1,21 +1,22 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import Select from './Select';
+import PriorityBadge from './PriorityBadge';
 import { batchNames } from './BatchCreate';
 import type { BatchKind } from './batch';
-import { addDays, assignmentsForDate, cycleWeek, dayTaskTimeLabel, localDate, STATUS, weekStart, type Data, type Status } from './model';
+import { annualStatus, addDays, assignmentsForDate, cycleWeek, dayTaskTimeLabel, localDate, STATUS, weekStart, type Data, type Status, type AnnualStatus, type Priority } from './model';
 type Kind=BatchKind|'group';
-type Node={id:string;kind:Kind;title:string;detail?:string;status?:Status;children:Node[];mismatch?:boolean};
-type Props={data:Data;cycleId:string|null;onCreate:(kind:BatchKind,defaults?:Record<string,string>)=>void;onBatch:(kind:BatchKind,defaults?:Record<string,string>)=>void;onEdit:(kind:BatchKind,id:string)=>void;onDelete:(kind:BatchKind,id:string,title:string)=>void;onStatus:(kind:BatchKind,id:string,status:Status)=>void;onAnnual:(id:string)=>void};
-export default function PlanningTree({data,cycleId,onCreate,onBatch,onEdit,onDelete,onStatus,onAnnual}:Props){
- const [collapsed,setCollapsed]=useState(new Set<string>()),[from,setFrom]=useState(''),[to,setTo]=useState('');
+type Node={id:string;kind:Kind;title:string;detail?:string;status?:Status;children:Node[];priority?:Priority|null;mismatch?:boolean};
+type Props={data:Data;cycleId:string|null;onCreate:(kind:BatchKind,defaults?:Record<string,string>)=>void;onBatch:(kind:BatchKind,defaults?:Record<string,string>)=>void;onEdit:(kind:BatchKind,id:string)=>void;onDelete:(kind:BatchKind,id:string,title:string)=>void;onStatus:(kind:BatchKind,id:string,status:Status)=>void;onAnnual:(id:string,status:AnnualStatus)=>void;collapsed:Set<string>;setCollapsed:React.Dispatch<React.SetStateAction<Set<string>>>};
+export default function PlanningTree({data,cycleId,onCreate,onBatch,onEdit,onDelete,onStatus,onAnnual,collapsed,setCollapsed}:Props){
+ const [from,setFrom]=useState(''),[to,setTo]=useState('');
  const known=useRef<Set<string>|null>(null),canvas=useRef<HTMLDivElement>(null);
  const [lines,setLines]=useState<string[]>([]);
  const nodes=useMemo(()=>{
   const cycle=data.cycles.find(item=>item.id===cycleId),tasks=data.tasks.filter(item=>item.cycle_id===cycleId);
-  const day=(item:Data['dayTasks'][number]):Node=>({id:item.id,kind:'dayTask',title:item.title,detail:`${item.date} ${dayTaskTimeLabel(item)}`,status:item.status,children:[],mismatch:!!item.assignment_id&&!assignmentsForDate(data,item.date).some(a=>a.id===item.assignment_id)});
-  const task=(item:Data['tasks'][number]):Node=>({id:item.id,kind:'task',title:item.title,status:item.status,children:data.assignments.filter(a=>a.task_id===item.id).map(a=>({id:a.id,kind:'assignment',title:a.commitment,status:a.status,detail:data.assignmentWeeks.filter(w=>w.assignment_id===a.id).map(w=>w.week_no).sort((a,b)=>a-b).map(week=>`第 ${week} 周`).join('、')||'待安排',children:data.dayTasks.filter(d=>d.assignment_id===a.id).map(day)}))});
-  const goal=(item:Data['annualGoals'][number]):Node=>({id:item.id,kind:'annual',title:item.title,detail:`${item.year} 年`,status:item.completed===1?'done':'missed',children:tasks.filter(t=>t.annual_goal_id===item.id).map(task)});
+  const day=(item:Data['dayTasks'][number]):Node=>({id:item.id,kind:'dayTask',priority:item.priority,title:item.title,detail:`${item.date} ${dayTaskTimeLabel(item)}`,status:item.status,children:[],mismatch:!!item.assignment_id&&!assignmentsForDate(data,item.date).some(a=>a.id===item.assignment_id)});
+  const task=(item:Data['tasks'][number]):Node=>({id:item.id,kind:'task',title:item.title,status:item.status,children:data.assignments.filter(a=>a.task_id===item.id).map(a=>({id:a.id,kind:'assignment',priority:a.priority,title:a.commitment,status:a.status,detail:data.assignmentWeeks.filter(w=>w.assignment_id===a.id).map(w=>w.week_no).sort((a,b)=>a-b).map(week=>`第 ${week} 周`).join('、')||'待安排',children:data.dayTasks.filter(d=>d.assignment_id===a.id).map(day)}))});
+  const goal=(item:Data['annualGoals'][number]):Node=>({id:item.id,kind:'annual',title:item.title,detail:`${item.year} 年`,status:annualStatus(item),children:tasks.filter(t=>t.annual_goal_id===item.id).map(task)});
   const roots:Node[]=data.directions.map(item=>({id:item.id,kind:'direction',title:item.title,children:data.annualGoals.filter(a=>a.direction_id===item.id).map(goal)}));
   const missingGoals=data.annualGoals.filter(item=>!item.direction_id||!data.directions.some(d=>d.id===item.direction_id));
   if(missingGoals.length)roots.push({id:'orphan-direction',kind:'group',title:'未归属年度方向',children:missingGoals.map(goal)});
@@ -62,11 +63,11 @@ export default function PlanningTree({data,cycleId,onCreate,onBatch,onEdit,onDel
    <div className="compact-tree-slot">
     <div className={`compact-tree-node ${node.status||''} ${node.kind==='group'?'tree-group':''}`}>
      <div className="compact-tree-control" data-tree-key={key(node)} title={description||node.title}>
-      {node.status&&<Select className={`tree-state status ${node.status}`} aria-label={`${node.title}状态：${STATUS[node.status]}`} value={node.status} displayLabel={<span aria-hidden="true">{icons[node.status]}</span>} onChange={event=>{const status=event.target.value as Status;if(status===node.status)return;if(node.kind==='annual')onAnnual(node.id);else onStatus(node.kind as BatchKind,node.id,status);}}>
-       {Object.entries(STATUS).filter(([value])=>node.kind!=='annual'||value==='done'||value==='missed').map(([value,label])=><option key={value} value={value}>{label}</option>)}
+      {node.status&&<Select className={`tree-state status ${node.status}`} aria-label={`${node.title}状态：${STATUS[node.status]}`} value={node.status} displayLabel={<span aria-hidden="true">{icons[node.status]}</span>} onChange={event=>{const status=event.target.value as Status;if(status===node.status)return;if(node.kind==='annual')onAnnual(node.id,status as AnnualStatus);else onStatus(node.kind as BatchKind,node.id,status);}}>
+       {Object.entries(STATUS).filter(([value])=>node.kind!=='annual'||value!=='doing').map(([value,label])=><option key={value} value={value}>{label}</option>)}
       </Select>}
       {node.kind==='group'?<span className="compact-tree-title" tabIndex={0}>{node.title}</span>:<button type="button" className="compact-tree-title" aria-label={`编辑${batchNames[node.kind]}：${node.title}`} onClick={()=>onEdit(node.kind as BatchKind,node.id)}>{node.title}</button>}
-      {node.mismatch&&<TriangleAlert className="tree-warning" size={14} aria-label="日期与周次不匹配"/>}
+      <PriorityBadge value={node.priority}/>{node.mismatch&&<TriangleAlert className="tree-warning" size={14} aria-label="日期与周次不匹配"/>}
      </div>
      <div className="tree-drawer" aria-label={`${node.title}操作`}>
       <button type="button" disabled={!canAdd} aria-label={`在${node.title}下新增${child?batchNames[child]:'分支'}`} title={!child?'日任务没有下一级':!canAdd?'先安排周次后才能关联日任务':`新增${batchNames[child]}`} onClick={()=>{if(child)onCreate(child,defaults(node,child));}}><Plus size={16}/></button>

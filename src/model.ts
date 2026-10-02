@@ -1,18 +1,23 @@
+import { EMPTY_PROJECTS, type ProjectData } from './projects';
+export type AnnualStatus = 'todo' | 'done' | 'missed';
+export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
+export const PRIORITY: Record<Priority,string> = {P0:'最高紧急',P1:'高紧急',P2:'中紧急',P3:'低紧急'};
 export type Status = 'todo' | 'doing' | 'done' | 'missed';
 export type Cycle = { id: string; title: string; start_date: string; created_at: string; review: string };
 export type Direction = { id: string; title: string; created_at: string };
-export type AnnualGoal = { id: string; direction_id: string | null; title: string; year: number; completed: number; created_at: string };
+export type AnnualGoal = { id: string; direction_id: string | null; title: string; year: number; completed: number; status?: AnnualStatus; created_at: string };
 export type Task = { id: string; cycle_goal_id: string | null; project_id: string | null; cycle_id: string | null; annual_goal_id: string | null; title: string; status: Status; due_date: string | null; created_at: string };
-export type WeekAssignment = { id: string; task_id: string; cycle_id: string | null; commitment: string; status: Status; review: string; created_at: string };
+export type WeekAssignment = { priority?: Priority|null; long_project_id?:string|null; id: string; task_id: string; cycle_id: string | null; commitment: string; status: Status; review: string; created_at: string };
 export type AssignmentWeek = { assignment_id: string; week_no: number };
-export type DayTask = { id: string; date: string; title: string; status: Status; assignment_id: string | null; project_id: string | null; task_id: string | null; recurrence_id: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null; scheduled_category_id: string | null; created_at: string };
-export type Category = { id: string; name: string; color: string; created_at: string };
+export type DayTask = { priority?: Priority|null; long_project_id?:string|null; id: string; date: string; title: string; status: Status; assignment_id: string | null; project_id: string | null; task_id: string | null; recurrence_id: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null; scheduled_category_id: string | null; created_at: string };
+export type CategoryKind = 'fixed' | 'goal' | 'legacy';
+export type Category = { kind?: CategoryKind; annual_goal_id?:string|null; goal_year?:number|null; active?:number; id: string; name: string; color: string; created_at: string };
 export type PlanBlock = { id: string; date: string; start_min: number; end_min: number; title: string; day_task_id: string | null; recurrence_id: string | null; created_at: string };
 export type DailyPlanTemplate = { id: string; start_min: number; end_min: number; title: string; created_at: string };
-export type TimeEntry = { id: string; start_at: string; end_at: string; title: string; category_id: string; day_task_id: string | null; project_id: string | null; task_id: string | null; created_at: string };
+export type TimeEntry = { long_project_id?:string|null; id: string; start_at: string; end_at: string; title: string; category_id: string; day_task_id: string | null; project_id: string | null; task_id: string | null; created_at: string };
 export type Recurrence = { id: string; kind: 'day_task' | 'plan'; frequency: 'daily' | 'weekly'; weekdays: string; start_date: string; end_date: string | null; title: string; start_min: number | null; end_min: number | null; project_id: string | null; task_id: string | null; category_id: string | null; active: number; created_at: string };
-export type Data = { cycles: Cycle[]; directions: Direction[]; annualGoals: AnnualGoal[]; tasks: Task[]; assignments: WeekAssignment[]; assignmentWeeks: AssignmentWeek[]; dayTasks: DayTask[]; categories: Category[]; planBlocks: PlanBlock[]; dailyPlanTemplates: DailyPlanTemplate[]; timeEntries: TimeEntry[]; recurrences: Recurrence[] };
-export const EMPTY: Data = { cycles: [], directions: [], annualGoals: [], tasks: [], assignments: [], assignmentWeeks: [], dayTasks: [], categories: [], planBlocks: [], dailyPlanTemplates: [], timeEntries: [], recurrences: [] };
+export type Data = ProjectData & { cycles: Cycle[]; directions: Direction[]; annualGoals: AnnualGoal[]; tasks: Task[]; assignments: WeekAssignment[]; assignmentWeeks: AssignmentWeek[]; dayTasks: DayTask[]; categories: Category[]; planBlocks: PlanBlock[]; dailyPlanTemplates: DailyPlanTemplate[]; timeEntries: TimeEntry[]; recurrences: Recurrence[] };
+export const EMPTY: Data = { ...EMPTY_PROJECTS, cycles: [], directions: [], annualGoals: [], tasks: [], assignments: [], assignmentWeeks: [], dayTasks: [], categories: [], planBlocks: [], dailyPlanTemplates: [], timeEntries: [], recurrences: [] };
 export const STATUS: Record<Status, string> = { todo: '待办', doing: '进行中', done: '已完成', missed: '未完成' };
 export const id = () => crypto.randomUUID();
 export const localDate = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -93,3 +98,5 @@ export const validateTimeEntry = (entries: TimeEntry[], startAt: string, endAt: 
   return null;
 };
 export const formatHours = (minutes: number) => `${(minutes/60).toFixed(1)} 小时`;
+
+export const annualStatus = (goal:AnnualGoal):AnnualStatus => goal.status || (goal.completed===1?'done':'missed');

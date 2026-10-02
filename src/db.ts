@@ -26,7 +26,7 @@ const schema = [
   'CREATE INDEX IF NOT EXISTS idx_plan_blocks_date ON plan_blocks(date)',
   'CREATE INDEX IF NOT EXISTS idx_assignment_weeks_week ON assignment_weeks(week_no)'
 ];
-const tables: Record<keyof Data,string> = { cycles:'cycles', directions:'directions', annualGoals:'annual_goals', tasks:'tasks', assignments:'week_assignments', assignmentWeeks:'assignment_weeks', dayTasks:'day_tasks', categories:'categories', planBlocks:'plan_blocks', dailyPlanTemplates:'daily_plan_templates', timeEntries:'time_entries', recurrences:'recurrences' };
+const tables: Record<keyof Data,string> = { cycles:'cycles', directions:'directions', annualGoals:'annual_goals', tasks:'tasks', assignments:'week_assignments', assignmentWeeks:'assignment_weeks', dayTasks:'day_tasks', categories:'categories', planBlocks:'plan_blocks', dailyPlanTemplates:'daily_plan_templates', timeEntries:'time_entries', recurrences:'recurrences', longProjects:'long_projects', projectTypes:'project_types', taskProjects:'task_projects', projectStages:'project_stages', projectPlans:'project_plans', projectUpdates:'project_updates', planTasks:'plan_tasks', planWeeks:'plan_weeks' };
 const allowed = new Set(Object.values(tables));
 async function db() { if (!connection) connection = await Database.load('sqlite:workbench.db'); return connection; }
 export function initDb(): Promise<void> {
@@ -69,11 +69,9 @@ async function initializeDb() {
     await c.execute('UPDATE recurrences SET task_id=(SELECT id FROM tasks WHERE project_id=recurrences.project_id LIMIT 1) WHERE task_id IS NULL AND project_id IS NOT NULL AND (SELECT COUNT(*) FROM tasks WHERE project_id=recurrences.project_id)=1');
     await c.execute("INSERT INTO app_migrations (name) VALUES ('unified_tasks')");
   }
-  const count = await c.select<{n:number}[]>('SELECT COUNT(*) AS n FROM categories');
-  if (!count[0].n) {
-    for (const [name,color] of [['睡眠','#8aa8cf'],['写作','#9072ba'],['自媒体','#d99166'],['AI 项目','#557cb2'],['学习','#5aa88e'],['健身','#91a969'],['生活','#c29a78'],['娱乐','#bf8298']])
-      await c.execute('INSERT OR IGNORE INTO categories (id,name,color,created_at) VALUES ($1,$2,$3,$4)',[id(),name,color,new Date().toISOString()]);
-  }
+  await invoke('init_long_projects');
+  await invoke('init_task_management');
+  await invoke('init_time_categories');
 }
 export async function readData(): Promise<Data> {
   const c = await db(); const result = { ...EMPTY };
@@ -102,15 +100,15 @@ export async function removeAssignmentWeek(assignmentId:string, weekNo:number) {
   await (await db()).execute('DELETE FROM assignment_weeks WHERE assignment_id=$1 AND week_no=$2',[assignmentId,weekNo]);
   await backupAfterChange();
 }
-export async function updateDayTask(rowId:string, values:{date:string;title:string;assignment_id:string|null;project_id:string|null;task_id:string|null;scheduled_start_at:string|null;scheduled_end_at:string|null;scheduled_category_id:string|null}) {
+export async function updateDayTask(rowId:string, values:{priority:import('./model').Priority|null;date:string;title:string;assignment_id:string|null;project_id:string|null;task_id:string|null;scheduled_start_at:string|null;scheduled_end_at:string|null;scheduled_category_id:string|null}) {
   const c=await db();
   const rows=await c.select<{date:string;recurrence_id:string|null}[]>('SELECT date,recurrence_id FROM day_tasks WHERE id=$1',[rowId]);
   if(!rows.length) throw Error('日任务不存在');
   if(rows[0].recurrence_id && rows[0].date!==values.date) {
     await c.execute('INSERT OR IGNORE INTO recurrence_exceptions (recurrence_id,date) VALUES ($1,$2)',[rows[0].recurrence_id,rows[0].date]);
-    await c.execute('UPDATE day_tasks SET date=$1,title=$2,assignment_id=$3,project_id=$4,task_id=$5,scheduled_start_at=$6,scheduled_end_at=$7,scheduled_category_id=$8,recurrence_id=NULL WHERE id=$9',[values.date,values.title,values.assignment_id,values.project_id,values.task_id,values.scheduled_start_at,values.scheduled_end_at,values.scheduled_category_id,rowId]);
+    await c.execute('UPDATE day_tasks SET date=$1,title=$2,assignment_id=$3,project_id=$4,task_id=$5,scheduled_start_at=$6,scheduled_end_at=$7,scheduled_category_id=$8,priority=$10,long_project_id=CASE WHEN assignment_id IS $3 THEN long_project_id ELSE (SELECT long_project_id FROM week_assignments WHERE id=$3) END,recurrence_id=NULL WHERE id=$9',[values.date,values.title,values.assignment_id,values.project_id,values.task_id,values.scheduled_start_at,values.scheduled_end_at,values.scheduled_category_id,rowId,values.priority]);
   } else {
-    await c.execute('UPDATE day_tasks SET date=$1,title=$2,assignment_id=$3,project_id=$4,task_id=$5,scheduled_start_at=$6,scheduled_end_at=$7,scheduled_category_id=$8 WHERE id=$9',[values.date,values.title,values.assignment_id,values.project_id,values.task_id,values.scheduled_start_at,values.scheduled_end_at,values.scheduled_category_id,rowId]);
+    await c.execute('UPDATE day_tasks SET date=$1,title=$2,assignment_id=$3,project_id=$4,task_id=$5,scheduled_start_at=$6,scheduled_end_at=$7,scheduled_category_id=$8,priority=$10,long_project_id=CASE WHEN assignment_id IS $3 THEN long_project_id ELSE (SELECT long_project_id FROM week_assignments WHERE id=$3) END WHERE id=$9',[values.date,values.title,values.assignment_id,values.project_id,values.task_id,values.scheduled_start_at,values.scheduled_end_at,values.scheduled_category_id,rowId,values.priority]);
   }
   await backupAfterChange();
 }
@@ -180,3 +178,5 @@ export async function deleteDirectionRecord(rowId:string) { await invoke('delete
 export async function deleteCycleRecord(rowId:string) { await invoke('delete_cycle',{rowId}); await backupAfterChange(); }
 export type BatchInsert = { values:Record<string,unknown>; weeks:number[] };
 export async function batchCreate(kind:string,rows:BatchInsert[]) { const count=await invoke<number>('batch_create',{kind,rows}); await backupAfterChange(); return count; }
+
+export async function projectAction(entity:string,action:string,rowId:string,values:Record<string,unknown>={},ids:string[]=[],planId:string|null=null,weeks:number[]=[]) { await invoke('project_action',{entity,action,rowId,values,ids,planId,weeks}); await backupAfterChange(); }

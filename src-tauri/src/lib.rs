@@ -1,4 +1,7 @@
 mod management;
+mod task_management;
+mod time_categories;
+mod long_projects;
 use chrono::Local;
 use rusqlite::{backup::Backup, Connection};
 use std::{fs, path::{Path, PathBuf}, time::Duration};
@@ -123,7 +126,7 @@ pub fn run() {
             management::migrate(&dir.join("workbench.db"), &dir).map_err(std::io::Error::other)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![backup_database, list_backups, stage_restore, management::delete_direction, management::delete_cycle, management::batch_create])
+        .invoke_handler(tauri::generate_handler![backup_database, list_backups, stage_restore, management::delete_direction, management::delete_cycle, management::batch_create, task_management::init_task_management, time_categories::init_time_categories, long_projects::init_long_projects, long_projects::project_action])
         .run(tauri::generate_context!())
         .expect("启动个人工作台失败");
 }
