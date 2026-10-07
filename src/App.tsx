@@ -1,3 +1,5 @@
+import DevInbox from './DevInbox';
+import { useDevInbox } from './devInboxModel';
 import TimeCategoryPicker from './TimeCategoryPicker';
 import { CATEGORY_LABELS, categoryKind, validCategory, applyLinkedCategory, linkedGoalCategory } from './timeCategories';
 import { confirmOperation } from './confirmOperation';
@@ -21,7 +23,7 @@ import HistoryPage from './History';
 import { annualStatus, PRIORITY, addDays, annualGoalTasks, assignmentInWeek, assignmentsForDate, calendarRange, categoryTotals, cycleWeek, dayTaskProjectId, dayTaskTaskId, dayTaskTimeLabel, formatHours, id, localDate, minuteLabel, parseMinute, progress, shiftCalendarDate, STATUS, validateTimeEntry, weekStart, type CalendarMode, type Data, type Status, type Task, type AnnualStatus, type Priority } from './model';
 import { batchCreate, deleteCycleRecord, deleteDirectionRecord, addAssignmentWeek, generateRecurrences, initDb, insert, listBackups, manualBackup, readData, remove, removeAnnualGoal, removeAssignmentWeek, removePlanBlock, removePlanningItem, stageRestore, update, updateDayTask, projectAction } from './db';
 
-type Page = 'home'|'cycles'|'tasks'|'calendar'|'reports'|'history'|'settings'|'projects';
+type Page = 'home'|'cycles'|'tasks'|'calendar'|'reports'|'history'|'settings'|'projects'|'dev-inbox';
 type FormKind = 'cycle'|'direction'|'annual'|'task'|'assignment'|'dayTask'|'plan'|'dailyPlan'|'entry'|'category'|'recurrence';
 type FormState = { kind:FormKind; values:Record<string,string>; editingId?:string; tree?:boolean; initial?:string };
 type CreateFn = (kind:FormKind, values?:Record<string,string>, editingId?:string)=>void;
@@ -35,6 +37,7 @@ const Empty = ({text,onClick,button}:{text:string;onClick?:()=>void;button?:stri
 
 export default function App() {
   const [data,setData]=useState<Data|null>(null), [page,setPage]=useState<Page>('home'), [date,setDate]=useState(localDate()), [calendarMode,setCalendarMode]=useState<CalendarMode>('week'), [form,setForm]=useState<FormState|null>(null);
+  const inbox=useDevInbox(data!==null);
   const [selectedCycle,setSelectedCycle]=useState<string|null>(null), [focusedTaskId,setFocusedTaskId]=useState<string|null>(null), [reportMode,setReportMode]=useState<'day'|'week'|'month'>('month');
   const [treeCollapse,setTreeCollapse]=useState<Record<string,Set<string>>>({}),[childPrompt,setChildPrompt]=useState(false);
   const saveResult=useRef(false);
@@ -78,7 +81,7 @@ export default function App() {
   const toggleAnnual=(annual:Data['annualGoals'][number],status:AnnualStatus)=>mutate(()=>update('annual_goals',annual.id,{status,completed:status==='done'?1:0}),'年度目标状态已更新');
   const cycle = selectedCycle==='__unassigned'?undefined:data?.cycles.find(c=>c.id===selectedCycle) || data?.cycles.slice().sort((a,b)=>b.start_date.localeCompare(a.start_date))[0];
   const currentWeek = cycle ? cycleWeek(cycle,localDate()) : 0;
-  const nav:[Page,string,React.ReactNode][]=[['home','总览',<LayoutDashboard size={18}/>],['calendar','日程',<CalendarDays size={18}/>],['cycles','12 周计划',<Target size={18}/>],['tasks','任务管理',<FolderKanban size={18}/>],['projects','项目管理',<FolderKanban size={18}/>],['reports','复盘统计',<Activity size={18}/>],['history','历史情况',<HistoryIcon size={18}/>],['settings','设置与备份',<Settings2 size={18}/>]];
+  const nav:[Page,string,React.ReactNode][]=[['home','总览',<LayoutDashboard size={18}/>],['calendar','日程',<CalendarDays size={18}/>],['cycles','12 周计划',<Target size={18}/>],['tasks','任务管理',<FolderKanban size={18}/>],['projects','项目管理',<FolderKanban size={18}/>],['reports','复盘统计',<Activity size={18}/>],['history','历史情况',<HistoryIcon size={18}/>],['settings','设置与备份',<Settings2 size={18}/>],['dev-inbox','开发收件箱',<FolderKanban size={20}/>]];
   const focusTask=(taskId:string)=>{if(!data?.tasks.some(t=>t.id===taskId)){setMessage('该本轮待办已不存在');return;}setPoolRequest(null);setTaskPool('task');setFocusedTaskId(taskId);setPage('tasks');};
   useEffect(()=>{if(page==='tasks'&&focusedTaskId) requestAnimationFrame(()=>{const element=document.getElementById(`task-${focusedTaskId}`);element?.scrollIntoView({block:'center'});element?.classList.add('task-highlight');setTimeout(()=>element?.classList.remove('task-highlight'),3000);});},[page,focusedTaskId,data]);
 
@@ -190,7 +193,8 @@ export default function App() {
     <main className="main"><header className="topbar"><div className="breadcrumb">个人工作台 <span>/</span> {nav.find(n=>n[0]===page)?.[1]}</div><div className="top-actions"><button className="icon-button" onClick={()=>{setDate(localDate());setCalendarMode('week');setPage('calendar')}} title="回到本周"><CalendarDays size={18}/></button><button className="primary small" onClick={()=>create('dayTask',{date:calendarMode==='day'?date:localDate()})}><Plus size={16}/> 新建日任务</button></div></header>
       {message&&<div className="notice" role="status">{message}<button onClick={()=>setMessage('')}>关闭</button></div>}
       {!data ? <div className="loading">正在打开本地工作台…</div> : <div className="content">
-      {page==='projects'&&<ProjectPage data={data} onRefresh={()=>refresh(date)} onCreate={create} onEdit={editNode} onDelete={deletePlanning} onStatus={setStatus} onFocusTask={focusTask} onSchedule={scheduleAssignment} onUnschedule={unscheduleAssignment}/>}
+      {page==='dev-inbox'&&<DevInbox snapshot={inbox.snapshot} error={inbox.error} projects={data.longProjects} onRefresh={inbox.refresh}/>}
+      {page==='projects'&&<ProjectPage inbox={inbox} data={data} onRefresh={()=>refresh(date)} onCreate={create} onEdit={editNode} onDelete={deletePlanning} onStatus={setStatus} onFocusTask={focusTask} onSchedule={scheduleAssignment} onUnschedule={unscheduleAssignment}/>}
 
         {page==='home'&&<HomeOverview data={data} cycle={cycle} onCreate={create} onEdit={editNode} onDelete={deletePlanning} onStatus={setStatus} onCalendar={()=>{setDate(localDate());setCalendarMode('week');setPage('calendar')}} onCycles={()=>setPage('cycles')} onPool={(kind,filters)=>{setSelectedCycle(filters.cycle==='__none'?'__unassigned':filters.cycle||null);setFocusedTaskId(null);setTaskPool(kind);setPoolRequest({filters,nonce:Date.now()});setPage('tasks');}}/>}
         {page==='cycles'&&<><div className="page-heading"><div><div className="kicker">计划地图</div><h1>12 周计划</h1><p>年度方向定主题，年度目标定结果，12 周计划承接每一轮行动。</p></div><div className="heading-actions"><Select aria-label="选择12周周期" value={cycle?.id||'__unassigned'} onChange={e=>setSelectedCycle(e.target.value)}><option value="__unassigned">未归属周期</option>{data.cycles.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}</Select><button className="primary" onClick={()=>create('cycle',{start_date:localDate()})}><Plus size={16}/> 新周期</button>{cycle&&<><button className="outline" onClick={()=>create('cycle',{title:cycle.title,start_date:cycle.start_date},cycle.id)}>编辑周期</button><button className="outline danger" onClick={()=>deleteCycle(cycle.id)}>删除周期</button></>}</div></div>
