@@ -39,3 +39,4 @@ subprocess.run(['launchctl', 'bootout', 'gui/' + str(os.getuid()), str(plist)], 
 subprocess.run(['launchctl', 'bootstrap', 'gui/' + str(os.getuid()), str(plist)], check=True)
 print('Collector installed. Review and trust the new Stop hook via Codex /hooks before expecting capture.')
 print('Existing notify configuration was not modified.')
+print('Desktop fallback tails newly completed local Codex turns; old history is excluded.')
