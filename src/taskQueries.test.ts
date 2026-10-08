@@ -10,3 +10,11 @@ it('周任务多周只显示一次，按独立优先级排序，安排和周次�
 it('年度旧数据回退保持含义，新年度目标默认为待办',()=>{expect(annualStatus({...data.annualGoals[0],status:undefined})).toBe('missed');expect(annualStatus({...data.annualGoals[0],status:undefined,completed:1})).toBe('done');expect(prepareRow('annual',{title:'新目标',direction_id:'dir',year:'2026'},data).values.status).toBe('todo');});
 it('批量周日优先级独立，空值有效，非法值拒绝',()=>{expect(prepareRow('assignment',{commitment:'周',task_id:'t0',priority:'P0'},data).values.priority).toBe('P0');expect(prepareRow('dayTask',{title:'日',date:'2026-10-01',assignment_id:'w0'},data).values.priority).toBeNull();expect(()=>prepareRow('dayTask',{title:'日',date:'2026-10-01',priority:'P4'},data)).toThrow('P0');});
 it('树的子级关联和折叠判断保持同一记录，日任务日期取已安排周',()=>{expect(childDefaults(data,'c','task','t0').task_id).toBe('t0');expect(childDefaults(data,'c','assignment','w0').assignment_id).toBe('w0');expect(hasTreeChildren(data,'c','task','t0')).toBe(true);expect(hasTreeChildren(data,'c','dayTask','d')).toBe(false);});
+it('周任务同项多选取并集、不同项取交集，清空多选恢复全部',()=>{
+ const sample={...data,assignments:data.assignments.map((w,i)=>({...w,status:i===1?'doing' as const:i===2?'done' as const:'todo' as const,task_id:i===1?'t1':'t0',long_project_id:i===1?'q':'p'})),assignmentWeeks:[...data.assignmentWeeks,{assignment_id:'w1',week_no:2}]};
+ const f=defaultFilters('assignment','c');
+ expect(filterWeeks(sample,{...f,multi:{status:['todo','doing'],priority:['P0','P1'],parent:['t0','t1'],project:['p','q'],week:['1','2'],schedule:['scheduled']}}).map(w=>w.id)).toEqual(['w0','w1']);
+ expect(filterWeeks(sample,{...f,multi:{status:['doing','done'],priority:['P0','P1']}}).map(w=>w.id)).toEqual(['w1']);
+ expect(filterWeeks(sample,{...f,multi:{schedule:['none','scheduled'],status:[]}})).toHaveLength(5);
+ expect(filterWeeks(sample,{...f,status:'doing'}).map(w=>w.id)).toEqual(['w1']);
+});

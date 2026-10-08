@@ -6,7 +6,7 @@ use tauri::AppHandle;
 
 static LOCK: Mutex<()> = Mutex::new(());
 fn err(e: impl std::fmt::Display) -> String { e.to_string() }
-fn schema(c: &Connection) -> Result<(), String> {
+pub(crate) fn schema(c: &Connection) -> Result<(), String> {
     c.execute_batch("PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS dev_inbox_events(id TEXT PRIMARY KEY, imported_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS dev_inbox_todos(
@@ -23,10 +23,10 @@ fn schema(c: &Connection) -> Result<(), String> {
 #[derive(Deserialize)]
 struct IncomingTodo { id: String, title: String, body: String, quote: String }
 #[derive(Deserialize)]
-struct Event { version: u32, event_id: String, session_id: String, source_key: String,
+pub(crate) struct Event { version: u32, event_id: String, session_id: String, source_key: String,
     source_name: String, source_root: String, captured_at: String, text: String, todos: Vec<IncomingTodo> }
-fn import(c: &mut Connection, event: &Event) -> Result<(), String> {
-    if event.version != 1 || event.event_id.is_empty() || event.session_id.is_empty() || event.source_key.is_empty() {
+pub(crate) fn import(c: &mut Connection, event: &Event) -> Result<(), String> {
+    if event.version != 1 || event.event_id.is_empty() || event.source_key.is_empty() {
         return Err("收集记录格式无效".into());
     }
     let tx = c.transaction().map_err(err)?;
