@@ -55,8 +55,12 @@ fn save_task_links(tx:&Transaction,task:&str,ids:&[String])->Result<(),String>{
  for p in ids{tx.execute("INSERT OR IGNORE INTO task_projects VALUES(?,?)",params![task,p]).map_err(fail)?;}
  tx.execute("DELETE FROM plan_tasks WHERE task_id=?1 AND plan_id IN(SELECT id FROM project_plans WHERE project_id NOT IN(SELECT project_id FROM task_projects WHERE task_id=?1))",[task]).map_err(fail)?;Ok(())
 }
-fn apply(c:&mut Connection,entity:&str,action:&str,id:&str,mut values:Map<String,Value>,ids:Vec<String>,plan_id:Option<String>,weeks:Vec<i64>)->Result<(),String>{
+fn apply(c:&mut Connection,entity:&str,action:&str,id:&str,values:Map<String,Value>,ids:Vec<String>,plan_id:Option<String>,weeks:Vec<i64>)->Result<(),String>{
  let tx=c.transaction().map_err(fail)?;
+ apply_in(&tx,entity,action,id,values,ids,plan_id,weeks)?;
+ tx.commit().map_err(fail)
+}
+pub(crate) fn apply_in(tx:&Transaction,entity:&str,action:&str,id:&str,mut values:Map<String,Value>,ids:Vec<String>,plan_id:Option<String>,weeks:Vec<i64>)->Result<(),String>{
  if action=="task_links"{if !exists(&tx,"tasks",id)?{return Err("本轮待办不存在".into());}save_task_links(&tx,id,&ids)?;}
  else if action=="link"||action=="unlink"{
   let plan=plan_id.as_deref().ok_or("请选择规划事项")?;
@@ -108,7 +112,7 @@ fn apply(c:&mut Connection,entity:&str,action:&str,id:&str,mut values:Map<String
    }
   }else{return Err("操作类型无效".into());}
  }
- tx.commit().map_err(fail)
+ Ok(())
 }
 #[tauri::command]
 pub fn project_action(app:AppHandle,entity:String,action:String,row_id:String,values:Map<String,Value>,ids:Vec<String>,plan_id:Option<String>,weeks:Vec<i64>)->Result<(),String>{

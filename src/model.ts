@@ -32,6 +32,15 @@ export const dayTaskTimeLabel = (task: DayTask) => {
 };
 export const cycleWeek = (cycle: Cycle, date: string) => Math.floor((new Date(`${date}T12:00:00`).getTime()-new Date(`${cycle.start_date}T12:00:00`).getTime())/86400000/7)+1;
 export const weekStart = (cycle: Cycle, week: number) => addDays(cycle.start_date, (week-1)*7);
+export function weekDateRange(cycle:Cycle,week:number):string {
+  const from=weekStart(cycle,week),to=addDays(from,6),crossYear=from.slice(0,4)!==to.slice(0,4);
+  const label=(date:string)=>`${crossYear?`${Number(date.slice(0,4))}年`:''}${Number(date.slice(5,7))}月${Number(date.slice(8,10))}日`;
+  return `${label(from)}–${label(to)}`;
+}
+export function cyclePlanTitle(cycle:Cycle|undefined,today=localDate()):string {
+  const week=cycle?cycleWeek(cycle,today):0;
+  return `12周计划${week>=1&&week<=12?` · 第${week}周`:''}`;
+}
 export const assignmentInWeek = (data:Data, assignmentId:string, weekNo:number) => data.assignmentWeeks.some(item=>item.assignment_id===assignmentId && item.week_no===weekNo);
 export const assignmentsForDate = (data:Data, date:string) => data.assignments.filter(item=>{
   const cycle=data.cycles.find(c=>c.id===item.cycle_id);

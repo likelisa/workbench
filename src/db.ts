@@ -28,7 +28,7 @@ const schema = [
 ];
 const tables: Record<keyof Data,string> = { cycles:'cycles', directions:'directions', annualGoals:'annual_goals', tasks:'tasks', assignments:'week_assignments', assignmentWeeks:'assignment_weeks', dayTasks:'day_tasks', categories:'categories', planBlocks:'plan_blocks', dailyPlanTemplates:'daily_plan_templates', timeEntries:'time_entries', recurrences:'recurrences', longProjects:'long_projects', projectTypes:'project_types', taskProjects:'task_projects', projectStages:'project_stages', projectPlans:'project_plans', projectUpdates:'project_updates', planTasks:'plan_tasks', planWeeks:'plan_weeks' };
 const allowed = new Set(Object.values(tables));
-async function db() { if (!connection) connection = await Database.load('sqlite:workbench.db'); return connection; }
+async function db() { if (!connection) connection = await Database.load(await invoke<string>('database_url')); return connection; }
 export function initDb(): Promise<void> {
   if(!initialization) initialization=initializeDb().catch(error=>{initialization=null;throw error;});
   return initialization;
@@ -72,6 +72,7 @@ async function initializeDb() {
   await invoke('init_long_projects');
   await invoke('init_task_management');
   await invoke('init_time_categories');
+  await invoke('ai_initialize');
 }
 export async function readData(): Promise<Data> {
   const c = await db(); const result = { ...EMPTY };
@@ -80,12 +81,14 @@ export async function readData(): Promise<Data> {
 }
 export async function insert(table:string, values:Record<string,unknown>) {
   if (!allowed.has(table)) throw Error('不支持的数据表');
+  if(table==='day_tasks'&&!values.recurrence_id){await invoke('ai_call',{method:'create_task',args:{request_id:String(values.id),kind:'dayTask',values}});return;}
   const c=await db(); const keys=Object.keys(values); const params=keys.map(k=>values[k]);
   await c.execute(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map((_,i)=>`$${i+1}`).join(',')})`,params);
   await backupAfterChange();
 }
 export async function update(table:string, rowId:string, values:Record<string,unknown>) {
   if (!allowed.has(table)) throw Error('不支持的数据表');
+  if(['tasks','week_assignments','day_tasks'].includes(table)&&Object.keys(values).length===1&&values.status){const kind=({tasks:'task',week_assignments:'assignment',day_tasks:'dayTask'} as Record<string,string>)[table];const result=await invoke<{items:{version:string}[]}>('ai_call',{method:'query',args:{kind,id:rowId}});if(!result.items[0])throw Error('任务不存在');await invoke('ai_call',{method:'set_task_status',args:{request_id:id(),kind,id:rowId,status:values.status,expected_version:result.items[0].version}});return;}
   const c=await db(); const keys=Object.keys(values);
   await c.execute(`UPDATE ${table} SET ${keys.map((k,i)=>`${k}=$${i+1}`).join(',')} WHERE id=$${keys.length+1}`,[...keys.map(k=>values[k]),rowId]);
   await backupAfterChange();
@@ -100,15 +103,15 @@ export async function removeAssignmentWeek(assignmentId:string, weekNo:number) {
   await (await db()).execute('DELETE FROM assignment_weeks WHERE assignment_id=$1 AND week_no=$2',[assignmentId,weekNo]);
   await backupAfterChange();
 }
-export async function updateDayTask(rowId:string, values:{priority:import('./model').Priority|null;date:string;title:string;assignment_id:string|null;project_id:string|null;task_id:string|null;scheduled_start_at:string|null;scheduled_end_at:string|null;scheduled_category_id:string|null}) {
+export async function updateDayTask(rowId:string, values:{status:import('./model').Status;priority:import('./model').Priority|null;date:string;title:string;assignment_id:string|null;project_id:string|null;task_id:string|null;scheduled_start_at:string|null;scheduled_end_at:string|null;scheduled_category_id:string|null}) {
   const c=await db();
   const rows=await c.select<{date:string;recurrence_id:string|null}[]>('SELECT date,recurrence_id FROM day_tasks WHERE id=$1',[rowId]);
   if(!rows.length) throw Error('日任务不存在');
   if(rows[0].recurrence_id && rows[0].date!==values.date) {
     await c.execute('INSERT OR IGNORE INTO recurrence_exceptions (recurrence_id,date) VALUES ($1,$2)',[rows[0].recurrence_id,rows[0].date]);
-    await c.execute('UPDATE day_tasks SET date=$1,title=$2,assignment_id=$3,project_id=$4,task_id=$5,scheduled_start_at=$6,scheduled_end_at=$7,scheduled_category_id=$8,priority=$10,long_project_id=CASE WHEN assignment_id IS $3 THEN long_project_id ELSE (SELECT long_project_id FROM week_assignments WHERE id=$3) END,recurrence_id=NULL WHERE id=$9',[values.date,values.title,values.assignment_id,values.project_id,values.task_id,values.scheduled_start_at,values.scheduled_end_at,values.scheduled_category_id,rowId,values.priority]);
+    await c.execute('UPDATE day_tasks SET date=$1,title=$2,assignment_id=$3,project_id=$4,task_id=$5,scheduled_start_at=$6,scheduled_end_at=$7,scheduled_category_id=$8,priority=$10,status=$11,long_project_id=CASE WHEN assignment_id IS $3 THEN long_project_id ELSE (SELECT long_project_id FROM week_assignments WHERE id=$3) END,recurrence_id=NULL WHERE id=$9',[values.date,values.title,values.assignment_id,values.project_id,values.task_id,values.scheduled_start_at,values.scheduled_end_at,values.scheduled_category_id,rowId,values.priority,values.status]);
   } else {
-    await c.execute('UPDATE day_tasks SET date=$1,title=$2,assignment_id=$3,project_id=$4,task_id=$5,scheduled_start_at=$6,scheduled_end_at=$7,scheduled_category_id=$8,priority=$10,long_project_id=CASE WHEN assignment_id IS $3 THEN long_project_id ELSE (SELECT long_project_id FROM week_assignments WHERE id=$3) END WHERE id=$9',[values.date,values.title,values.assignment_id,values.project_id,values.task_id,values.scheduled_start_at,values.scheduled_end_at,values.scheduled_category_id,rowId,values.priority]);
+    await c.execute('UPDATE day_tasks SET date=$1,title=$2,assignment_id=$3,project_id=$4,task_id=$5,scheduled_start_at=$6,scheduled_end_at=$7,scheduled_category_id=$8,priority=$10,status=$11,long_project_id=CASE WHEN assignment_id IS $3 THEN long_project_id ELSE (SELECT long_project_id FROM week_assignments WHERE id=$3) END WHERE id=$9',[values.date,values.title,values.assignment_id,values.project_id,values.task_id,values.scheduled_start_at,values.scheduled_end_at,values.scheduled_category_id,rowId,values.priority,values.status]);
   }
   await backupAfterChange();
 }
@@ -179,4 +182,4 @@ export async function deleteCycleRecord(rowId:string) { await invoke('delete_cyc
 export type BatchInsert = { values:Record<string,unknown>; weeks:number[] };
 export async function batchCreate(kind:string,rows:BatchInsert[]) { const count=await invoke<number>('batch_create',{kind,rows}); await backupAfterChange(); return count; }
 
-export async function projectAction(entity:string,action:string,rowId:string,values:Record<string,unknown>={},ids:string[]=[],planId:string|null=null,weeks:number[]=[]) { await invoke('project_action',{entity,action,rowId,values,ids,planId,weeks}); await backupAfterChange(); }
+export async function projectAction(entity:string,action:string,rowId:string,values:Record<string,unknown>={},ids:string[]=[],planId:string|null=null,weeks:number[]=[]) { if(action==='save'&&['task','assignment'].includes(entity)&&!planId){const found=await invoke<{items:unknown[]}>('ai_call',{method:'query',args:{kind:entity,id:rowId}});if(!found.items.length){await invoke('ai_call',{method:'create_task',args:{request_id:rowId,kind:entity,values,project_ids:ids,weeks}});return;}} await invoke('project_action',{entity,action,rowId,values,ids,planId,weeks}); await backupAfterChange(); }

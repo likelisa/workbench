@@ -1,3 +1,6 @@
+mod ai_service;
+mod ai_tools;
+mod dev_inbox;
 mod management;
 mod task_management;
 mod time_categories;
@@ -8,9 +11,16 @@ use std::{fs, path::{Path, PathBuf}, time::Duration};
 use tauri::{AppHandle, Manager};
 
 fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    #[cfg(debug_assertions)]
+    if let Some(path)=std::env::var_os("WORKBENCH_TEST_DATA_DIR") {let dir=PathBuf::from(path);fs::create_dir_all(&dir).map_err(|e|e.to_string())?;return Ok(dir);}
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
+}
+
+#[tauri::command]
+fn database_url(app: AppHandle) -> Result<String, String> {
+    Ok(format!("sqlite:{}", config_dir(&app)?.join("workbench.db").display()))
 }
 
 fn online_backup(source: &Path, destination: &Path) -> Result<(), String> {
@@ -59,6 +69,8 @@ fn migrate_week_assignments(db_path: &Path, dir: &Path) -> Result<(), String> {
 
 #[tauri::command]
 fn backup_database(app: AppHandle, manual: bool, destination: Option<String>) -> Result<String, String> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = LOCK.lock().map_err(|e| e.to_string())?;
     let dir = config_dir(&app)?;
     let source = dir.join("workbench.db");
     let target = if manual {
@@ -126,7 +138,7 @@ pub fn run() {
             management::migrate(&dir.join("workbench.db"), &dir).map_err(std::io::Error::other)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![backup_database, list_backups, stage_restore, management::delete_direction, management::delete_cycle, management::batch_create, task_management::init_task_management, time_categories::init_time_categories, long_projects::init_long_projects, long_projects::project_action])
+        .invoke_handler(tauri::generate_handler![database_url, ai_tools::ai_initialize, ai_tools::ai_call, dev_inbox::dev_inbox_read, dev_inbox::dev_inbox_save, dev_inbox::dev_inbox_delete, dev_inbox::dev_inbox_open_chat, backup_database, list_backups, stage_restore, management::delete_direction, management::delete_cycle, management::batch_create, task_management::init_task_management, time_categories::init_time_categories, long_projects::init_long_projects, long_projects::project_action])
         .run(tauri::generate_context!())
         .expect("启动个人工作台失败");
 }

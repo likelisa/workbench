@@ -1,3 +1,4 @@
+import { STATUS_ICONS } from './StatusIcon';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import Select from './Select';
@@ -54,7 +55,7 @@ export default function PlanningTree({data,cycleId,onCreate,onBatch,onEdit,onDel
   measure();const observer=new ResizeObserver(measure);observer.observe(element);element.querySelectorAll('[data-tree-key]').forEach(node=>observer.observe(node));return()=>observer.disconnect();
  },[nodes,collapsed]);
  const toggle=(node:Node)=>setCollapsed(previous=>{const next=new Set(previous),id=key(node);next.has(id)?next.delete(id):next.add(id);return next;});
- const icons:Record<Status,string>={todo:'⭕',doing:'⏳',done:'✅',missed:'❌'};
+
  const render=(node:Node,root=false):React.ReactNode=>{
   const open=!collapsed.has(key(node)),child=({direction:'annual',annual:'task',task:'assignment',assignment:'dayTask'} as Partial<Record<Kind,BatchKind>>)[node.kind];
   const canAdd=!!child&&(child!=='dayTask'||data.assignmentWeeks.some(w=>w.assignment_id===node.id));
@@ -63,7 +64,7 @@ export default function PlanningTree({data,cycleId,onCreate,onBatch,onEdit,onDel
    <div className="compact-tree-slot">
     <div className={`compact-tree-node ${node.status||''} ${node.kind==='group'?'tree-group':''}`}>
      <div className="compact-tree-control" data-tree-key={key(node)} title={description||node.title}>
-      {node.status&&<Select className={`tree-state status ${node.status}`} aria-label={`${node.title}状态：${STATUS[node.status]}`} value={node.status} displayLabel={<span aria-hidden="true">{icons[node.status]}</span>} onChange={event=>{const status=event.target.value as Status;if(status===node.status)return;if(node.kind==='annual')onAnnual(node.id,status as AnnualStatus);else onStatus(node.kind as BatchKind,node.id,status);}}>
+      {node.status&&<Select className={`tree-state status ${node.status}`} aria-label={`${node.title}状态：${STATUS[node.status]}`} value={node.status} displayLabel={<span aria-hidden="true">{STATUS_ICONS[node.status]}</span>} onChange={event=>{const status=event.target.value as Status;if(status===node.status)return;if(node.kind==='annual')onAnnual(node.id,status as AnnualStatus);else onStatus(node.kind as BatchKind,node.id,status);}}>
        {Object.entries(STATUS).filter(([value])=>node.kind!=='annual'||value!=='doing').map(([value,label])=><option key={value} value={value}>{label}</option>)}
       </Select>}
       {node.kind==='group'?<span className="compact-tree-title" tabIndex={0}>{node.title}</span>:<button type="button" className="compact-tree-title" aria-label={`编辑${batchNames[node.kind]}：${node.title}`} onClick={()=>onEdit(node.kind as BatchKind,node.id)}>{node.title}</button>}
