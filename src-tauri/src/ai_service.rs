@@ -18,8 +18,7 @@ pub fn schema(c:&Connection)->Result<(),String>{
     c.execute_batch("CREATE TABLE IF NOT EXISTS ai_operations(request_id TEXT PRIMARY KEY,request_json TEXT NOT NULL,result_json TEXT NOT NULL,created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ai_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,record_id TEXT, before_json TEXT,after_json TEXT,created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ai_snapshots(id TEXT PRIMARY KEY,scope_json TEXT NOT NULL,data_json TEXT NOT NULL,created_at TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS ai_reviews(id TEXT PRIMARY KEY,snapshot_id TEXT NOT NULL REFERENCES ai_snapshots(id),title TEXT NOT NULL,body TEXT NOT NULL,evidence_json TEXT NOT NULL,created_at TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS ai_receipts(id TEXT PRIMARY KEY,payload_json TEXT NOT NULL,result_json TEXT NOT NULL,created_at TEXT NOT NULL);").map_err(err)
+      CREATE TABLE IF NOT EXISTS ai_reviews(id TEXT PRIMARY KEY,snapshot_id TEXT NOT NULL REFERENCES ai_snapshots(id),title TEXT NOT NULL,body TEXT NOT NULL,evidence_json TEXT NOT NULL,created_at TEXT NOT NULL);").map_err(err)
 }
 pub fn rows(c:&Connection,sql:&str,args:&[&dyn rusqlite::ToSql])->Result<Vec<Value>,String>{
     let mut s=c.prepare(sql).map_err(err)?; let names=s.column_names().iter().map(|s|s.to_string()).collect::<Vec<_>>();
@@ -153,7 +152,9 @@ pub fn snapshot(c:&mut Connection,a:&Value)->Result<Value,String>{
     let planned:i64=plans.iter().map(|v|v["end_min"].as_i64().unwrap_or(0)-v["start_min"].as_i64().unwrap_or(0)).sum();
     let notes=rows(&tx,"SELECT id,title,review FROM cycles WHERE start_date<=? AND date(start_date,'+83 days')>=? ORDER BY start_date",&[&e,&s])?;
     let updates=rows(&tx,"SELECT * FROM project_updates WHERE date>=? AND date<=? ORDER BY date,id",&[&s,&e])?;
-    let data=json!({"scope":a,"projects":rows(&tx,"SELECT * FROM long_projects ORDER BY id",&[])?,"annual_goals":rows(&tx,"SELECT * FROM annual_goals ORDER BY id",&[])?,"categories":rows(&tx,"SELECT * FROM categories ORDER BY id",&[])?,"date_from":s,"date_to":e,"timezone":"Asia/Shanghai","as_of":chrono::Utc::now().to_rfc3339(),"metrics":{"tasks":summary(&tasks),"weeks":summary(&weeks),"days":summary(&days),"recorded_minutes":minutes,"planned_block_minutes":planned},"tasks":tasks,"weeks":weeks,"days":days,"time_entries":entries,"plan_blocks":plans,"cycle_reviews":notes,"project_updates":updates,"limitations":["完成率是生成快照时的当前状态，不是历史时点状态。","年度任务按年度目标年份归属；周期任务按周期归属。日任务和时间记录按日期范围统计。","已记录用时不等于经核实的实际投入；创建带时间的日任务可能由现有规则生成时间记录。","计划时段与已记录用时分别统计，不推测未记录时间。"]});
+    let mut data=json!({"scope":a,"projects":rows(&tx,"SELECT * FROM long_projects ORDER BY id",&[])?,"annual_goals":rows(&tx,"SELECT * FROM annual_goals ORDER BY id",&[])?,"categories":rows(&tx,"SELECT * FROM categories ORDER BY id",&[])?,"date_from":s,"date_to":e,"timezone":"Asia/Shanghai","as_of":chrono::Utc::now().to_rfc3339(),"metrics":{"tasks":summary(&tasks),"weeks":summary(&weeks),"days":summary(&days),"recorded_minutes":minutes,"planned_block_minutes":planned},"tasks":tasks,"weeks":weeks,"days":days,"time_entries":entries,"plan_blocks":plans,"cycle_reviews":notes,"project_updates":updates,"limitations":["完成率是生成快照时的当前状态，不是历史时点状态。","年度任务按年度目标年份归属；周期任务按周期归属。日任务和时间记录按日期范围统计。","已记录用时不等于经核实的实际投入；创建带时间的日任务可能由现有规则生成时间记录。","计划时段与已记录用时分别统计，不推测未记录时间。"]});
+    let unified_ready:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('time_entries') WHERE name='work_kind')",[],|r|r.get(0)).map_err(err)?;
+    if unified_ready {let mut args=json!({"date_from":s,"date_to":e});if let Some(cycle_id)=cycle{args["cycle_id"]=json!(cycle_id);}data["unified"]=super::unified::statistics(&tx,&args)?;}
     let id=hash(&data);tx.execute("INSERT OR IGNORE INTO ai_snapshots VALUES(?,?,?,?)",params![id,a.to_string(),data.to_string(),chrono::Utc::now().to_rfc3339()]).map_err(err)?;tx.commit().map_err(err)?;
     Ok(json!({"snapshot_id":id,"data":data,"evidence_format":"用 JSON Pointer 引用 data 内字段，例如 /metrics/tasks 或 /days/0"}))
 }

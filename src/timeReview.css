@@ -1,0 +1,44 @@
+.time-review .review-range{display:flex;align-items:center;gap:12px;font-size:13px;white-space:nowrap}
+.time-review .review-range .app-select{min-width:150px}
+.review-top-filters{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:12px 20px;max-width:100%}
+.review-top-filters .review-range:first-child .app-select{max-width:360px}
+.time-review .review-charts>header{align-items:flex-start;gap:20px}
+.review-period{font-size:14px;font-variant-numeric:tabular-nums;color:#45643a;margin:8px 0 3px}
+.review-chart-controls{display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+.time-review .review-dimensions{padding:4px;border:1px solid #d8e4d4;border-radius:8px;background:#f8fbf5}
+.time-review .review-dimensions button{font-size:13px;padding:8px 16px}
+.time-review .review-dimensions .active{background:#2f6b21;color:white}
+.review-chart-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;margin-top:24px}
+.review-chart-grid figure{min-width:0;margin:0}
+.review-chart-grid figcaption{font-size:13px;font-weight:600;color:#5b7261;margin-bottom:14px}
+.review-chart-grid figcaption small{float:right;font-weight:400}
+.review-pie{display:block;width:min(100%,320px);margin:0 auto}
+.review-pie [tabindex]{outline-offset:3px;cursor:default}
+.review-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 10px;margin-top:8px}
+.time-review .review-legend button{display:inline-flex;align-items:center;gap:6px;border:0;font-size:12px;padding:4px;background:transparent}
+.review-legend small{color:#6a7e70;font-variant-numeric:tabular-nums}
+.review-swatch{display:inline-block;flex:none;width:9px;height:9px;border-radius:2px;margin-right:7px;vertical-align:middle}
+.review-legend .review-swatch{margin-right:0}
+.review-bars{display:flex;flex-direction:column;gap:13px;max-height:440px;overflow:auto;padding:2px 6px 5px 2px}
+.review-bar{border-radius:4px;outline-offset:2px}
+.review-bar>div{display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:5px;font-size:13px}
+.review-bar span{overflow-wrap:anywhere;min-width:0}
+.review-bar strong{font-size:12px;white-space:nowrap;font-weight:500;font-variant-numeric:tabular-nums}
+.review-bar svg{display:block;width:100%;height:11px}
+.review-bar.is-active{background:#f3f9ed}
+.review-chart-hint{min-height:24px;margin:20px 0 0;padding-top:12px;border-top:1px solid #e5ede1;font-size:12px;color:#536e4b}
+.review-chart-empty{min-height:260px;display:grid;place-items:center;color:#7b8b80;font-size:14px;background:#fafcf8;border-radius:8px}
+.review-details header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.review-details header>span{font-size:11px;color:#788a7d}
+.review-details .u-stat-row{font-size:13px;padding:12px 0;grid-template-columns:minmax(0,1fr) auto 50px}
+.review-details .u-stat-row>span{overflow-wrap:anywhere}
+.review-cycle-heading{display:flex;align-items:center;flex-wrap:wrap;gap:12px;font-size:13px}
+.review-cycle-heading>span{color:#788a7d;font-variant-numeric:tabular-nums}
+.review-cycle .app-select{max-width:100%;min-width:240px}
+.review-cycle-context{font-size:12px;color:#5b7261;padding:9px 12px;background:#f5f9f0;border-radius:5px}
+.review-editor textarea{width:100%;resize:vertical}
+.review-editor header p{font-size:13px;color:#788a7d}
+@media(max-width:1100px){.review-chart-grid{gap:24px}.time-review .review-charts>header{flex-wrap:wrap}.review-chart-controls{align-items:flex-start}.review-bars{max-height:420px}}
+@media(max-width:800px){.review-chart-grid,.time-review .u-time-columns{grid-template-columns:1fr}.review-chart-grid{gap:28px}.review-bars{max-height:none}.review-cycle>header{align-items:stretch}.review-cycle .app-select{width:100%;min-width:0}.review-period{font-size:12px}.review-details header{flex-wrap:wrap}}
+@media(max-width:1100px){.time-review>.u-heading{flex-wrap:wrap}.review-top-filters{justify-content:flex-start}.time-review .review-range{white-space:normal;min-width:0}}
+@media(max-width:650px){.review-top-filters{width:100%}.review-top-filters .review-range{width:100%}.review-top-filters .app-select{flex:1;min-width:0!important;max-width:100%!important}}

@@ -3,7 +3,7 @@ use tauri::AppHandle;
 fn has(c:&Connection, table:&str, field:&str)->Result<bool,String>{
  c.query_row(&format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name=?"),[field],|r|r.get::<_,i64>(0)).map(|n|n>0).map_err(|e|e.to_string())
 }
-fn upgrade(c:&mut Connection)->Result<(),String>{
+pub(crate) fn upgrade(c:&mut Connection)->Result<(),String>{
  let tx=c.transaction().map_err(|e|e.to_string())?;
  if !has(&tx,"annual_goals","status")? {
   tx.execute_batch("ALTER TABLE annual_goals ADD COLUMN status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo','done','missed')); UPDATE annual_goals SET status=CASE WHEN completed=1 THEN 'done' ELSE 'missed' END;").map_err(|e|e.to_string())?;

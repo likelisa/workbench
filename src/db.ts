@@ -26,7 +26,7 @@ const schema = [
   'CREATE INDEX IF NOT EXISTS idx_plan_blocks_date ON plan_blocks(date)',
   'CREATE INDEX IF NOT EXISTS idx_assignment_weeks_week ON assignment_weeks(week_no)'
 ];
-const tables: Record<keyof Data,string> = { cycles:'cycles', directions:'directions', annualGoals:'annual_goals', tasks:'tasks', assignments:'week_assignments', assignmentWeeks:'assignment_weeks', dayTasks:'day_tasks', categories:'categories', planBlocks:'plan_blocks', dailyPlanTemplates:'daily_plan_templates', timeEntries:'time_entries', recurrences:'recurrences', longProjects:'long_projects', projectTypes:'project_types', taskProjects:'task_projects', projectStages:'project_stages', projectPlans:'project_plans', projectUpdates:'project_updates', planTasks:'plan_tasks', planWeeks:'plan_weeks' };
+const tables: Record<keyof Data,string> = { taskProjectItems:'task_project_items', itemProjects:'item_projects', items:'items', placements:'placements', cycleGoals:'cycle_goals', projectVersions:'project_versions', cycles:'cycles', directions:'directions', annualGoals:'annual_goals', tasks:'tasks', assignments:'week_assignments', assignmentWeeks:'assignment_weeks', dayTasks:'day_tasks', categories:'categories', planBlocks:'plan_blocks', dailyPlanTemplates:'daily_plan_templates', timeEntries:'time_entries', recurrences:'recurrences', longProjects:'long_projects', projectTypes:'project_types', taskProjects:'task_projects', projectStages:'project_stages', projectPlans:'project_plans', projectUpdates:'project_updates', planTasks:'plan_tasks', planWeeks:'plan_weeks' };
 const allowed = new Set(Object.values(tables));
 async function db() { if (!connection) connection = await Database.load(await invoke<string>('database_url')); return connection; }
 export function initDb(): Promise<void> {
@@ -72,6 +72,7 @@ async function initializeDb() {
   await invoke('init_long_projects');
   await invoke('init_task_management');
   await invoke('init_time_categories');
+  await invoke('init_unified');
   await invoke('ai_initialize');
 }
 export async function readData(): Promise<Data> {
