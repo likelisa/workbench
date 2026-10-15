@@ -1,6 +1,7 @@
+mod unified;
 mod ai_service;
+mod ai_workbench;
 mod ai_tools;
-mod dev_inbox;
 mod management;
 mod task_management;
 mod time_categories;
@@ -138,7 +139,7 @@ pub fn run() {
             management::migrate(&dir.join("workbench.db"), &dir).map_err(std::io::Error::other)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![database_url, ai_tools::ai_initialize, ai_tools::ai_call, dev_inbox::dev_inbox_read, dev_inbox::dev_inbox_save, dev_inbox::dev_inbox_delete, dev_inbox::dev_inbox_open_chat, backup_database, list_backups, stage_restore, management::delete_direction, management::delete_cycle, management::batch_create, task_management::init_task_management, time_categories::init_time_categories, long_projects::init_long_projects, long_projects::project_action])
+        .invoke_handler(tauri::generate_handler![database_url, unified::init_unified, ai_tools::ai_initialize, ai_tools::ai_call, backup_database, list_backups, stage_restore, management::delete_direction, management::delete_cycle, management::batch_create, task_management::init_task_management, time_categories::init_time_categories, long_projects::init_long_projects, long_projects::project_action])
         .run(tauri::generate_context!())
         .expect("启动个人工作台失败");
 }

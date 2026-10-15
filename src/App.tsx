@@ -1,9 +1,9 @@
+import UnifiedWorkbench from './UnifiedWorkbench';
+import TimeReview from './TimeReview';
 import TaskEditorRelations from './TaskEditorRelations';
 import { createEditorQueue, runSavedEditorAction } from './editorActions';
 import AiReviews from './AiReviews';
 import { listen } from '@tauri-apps/api/event';
-import DevInbox from './DevInbox';
-import { useDevInbox } from './devInboxModel';
 import StatusIcon from './StatusIcon';
 import ActionNotice from './ActionNotice';
 import DayPlans from './DayPlans';
@@ -22,7 +22,7 @@ import BatchCreate from './BatchCreate';
 import type { BatchKind } from './batch';
 import Select from './Select';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { Activity, ArchiveRestore, CalendarDays, ChevronLeft, ChevronRight, CircleHelp, FolderKanban, History as HistoryIcon, LayoutDashboard, Plus, RotateCcw, Save, Settings2, Target, Trash2 } from 'lucide-react';
+import { ArchiveRestore, ChartPie, ChevronLeft, ChevronRight, CircleHelp, FolderKanban, LayoutDashboard, Plus, RotateCcw, Save, Settings2, Target, Trash2 } from 'lucide-react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import CalendarOverview from './CalendarOverview';
 import { calendarTaskChoices, calendarTaskPlacement } from './calendarWeekTask';
@@ -30,7 +30,7 @@ import HistoryPage from './History';
 import { annualStatus, PRIORITY, addDays, annualGoalTasks, assignmentInWeek, assignmentsForDate, calendarRange, categoryTotals, cyclePlanTitle, cycleWeek, dayTaskProjectId, dayTaskTaskId, dayTaskTimeLabel, formatHours, id, localDate, minuteLabel, parseMinute, progress, shiftCalendarDate, STATUS, validateTimeEntry, weekStart, type CalendarMode, type Data, type Status, type Task, type AnnualStatus, type Priority } from './model';
 import { batchCreate, deleteCycleRecord, deleteDirectionRecord, addAssignmentWeek, generateRecurrences, initDb, insert, listBackups, manualBackup, readData, remove, removeAnnualGoal, removeAssignmentWeek, removePlanBlock, removePlanningItem, stageRestore, update, updateDayTask, projectAction } from './db';
 
-type Page = 'home'|'cycles'|'tasks'|'calendar'|'reports'|'history'|'settings'|'projects'|'dev-inbox';
+type Page = 'timeReview'|'legacyHome'|'legacyProjects'|'legacyCycles'|'home'|'cycles'|'tasks'|'calendar'|'reports'|'history'|'settings'|'projects';
 type FormKind = 'cycle'|'direction'|'annual'|'task'|'assignment'|'dayTask'|'plan'|'dailyPlan'|'entry'|'category'|'recurrence';
 type FormState = { kind:FormKind; values:Record<string,string>; editingId?:string; tree?:boolean; initial?:string };
 type CreateFn = (kind:FormKind, values?:Record<string,string>, editingId?:string)=>void;
@@ -45,7 +45,6 @@ const Empty = ({text,onClick,button}:{text:string;onClick?:()=>void;button?:stri
 
 export default function App() {
   const [data,setData]=useState<Data|null>(null), [page,setPage]=useState<Page>('home'), [date,setDate]=useState(localDate()), [calendarMode,setCalendarMode]=useState<CalendarMode>('week'), [form,setForm]=useState<FormState|null>(null);
-  const inbox=useDevInbox(data!==null);
   const [selectedCycle,setSelectedCycle]=useState<string|null>(null), [focusedTaskId,setFocusedTaskId]=useState<string|null>(null), [reportMode,setReportMode]=useState<'day'|'week'|'month'>('month');
   const [treeCollapse,setTreeCollapse]=useState<Record<string,Set<string>>>({}),[childPrompt,setChildPrompt]=useState(false);
   const formRef=useRef(form);formRef.current=form;
@@ -107,7 +106,7 @@ export default function App() {
   const toggleAnnual=(annual:Data['annualGoals'][number],status:AnnualStatus)=>mutate(()=>update('annual_goals',annual.id,{status,completed:status==='done'?1:0}),'年度目标状态已更新');
   const cycle = selectedCycle==='__unassigned'?undefined:data?.cycles.find(c=>c.id===selectedCycle) || data?.cycles.slice().sort((a,b)=>b.start_date.localeCompare(a.start_date))[0];
   const currentWeek = cycle ? cycleWeek(cycle,localDate()) : 0;
-  const nav:[Page,string,React.ReactNode][]=[['home','总览',<LayoutDashboard size={18}/>],['calendar','日程',<CalendarDays size={18}/>],['cycles','12 周计划',<Target size={18}/>],['tasks','任务管理',<FolderKanban size={18}/>],['projects','项目管理',<FolderKanban size={18}/>],['reports','复盘统计',<Activity size={18}/>],['history','历史情况',<HistoryIcon size={18}/>],['settings','设置与备份',<Settings2 size={18}/>],['dev-inbox','开发收件箱',<FolderKanban size={20}/>]];
+  const nav:[Page,string,React.ReactNode][]=[['home','执行工作台',<LayoutDashboard size={18}/>],['projects','项目管理',<FolderKanban size={18}/>],['cycles','12周计划',<Target size={18}/>],['timeReview','时间与复盘',<ChartPie size={18}/>]];
   const focusTask=(taskId:string)=>{if(!data?.tasks.some(t=>t.id===taskId)){setMessage('该本轮待办已不存在');return;}setPoolRequest(null);setTaskPool('task');setFocusedTaskId(taskId);setPage('tasks');};
   useEffect(()=>{if(page==='tasks'&&focusedTaskId) requestAnimationFrame(()=>{const element=document.getElementById(`task-${focusedTaskId}`);element?.scrollIntoView({block:'center'});element?.classList.add('task-highlight');setTimeout(()=>element?.classList.remove('task-highlight'),3000);});},[page,focusedTaskId,data]);
 
@@ -261,15 +260,16 @@ export default function App() {
   const calendarTitle=calendarMode==='day'?new Date(`${date}T12:00:00`).toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'}):calendarMode==='week'?`${calendarFrom} — ${addDays(calendarTo,-1)}`:calendarMode==='month'?`${Number(date.slice(0,4))} 年 ${Number(date.slice(5,7))} 月`:`${date.slice(0,4)} 年`;
 
   return <div className="shell">
-    <aside className="sidebar"><div className="brand"><div className="brand-mark"><span/><span/><span/><span/></div><div><strong>个人工作台</strong><small>把计划变成进展</small></div></div><nav>{nav.map(([key,label,icon])=><button key={key} className={page===key?'active':''} onClick={()=>{setFocusedTaskId(null);if(key==='calendar')setCalendarMode('week');setPage(key)}}>{icon}<span>{label}</span></button>)}</nav><div className="sidebar-bottom"><div className="today-dot"/>今天是 {localDate()}<span>本地离线</span></div></aside>
-    <main className="main"><header className="topbar"><div className="breadcrumb">个人工作台 <span>/</span> {nav.find(n=>n[0]===page)?.[1]}</div><div className="top-actions"><button className="outline" onClick={()=>{setDate(localDate());setCalendarMode('week');setPage('calendar')}} title="打开本周日程"><CalendarDays size={18}/> 本周日程</button><button className="primary small new-day-task" onClick={()=>create('dayTask',{date:calendarMode==='day'?date:localDate()})}><Plus size={16}/> 新建日任务</button></div></header>
+    <aside className="sidebar"><div className="brand"><div className="brand-mark"><span/><span/><span/><span/></div><div><strong>个人工作台</strong><small>把计划变成进展</small></div></div><nav>{nav.map(([key,label,icon])=><button key={key} aria-label={label} title={label} className={page===key?'active':''} onClick={()=>{setFocusedTaskId(null);if(key==='calendar')setCalendarMode('week');setPage(key)}}>{icon}<span>{label}</span></button>)}</nav><div className="sidebar-bottom"><div className="today-dot"/>今天是 {localDate()}<span>本地离线</span></div></aside>
+    <main className="main"><header className="topbar"><div className="breadcrumb">个人工作台 <span>/</span> {nav.find(n=>n[0]===page)?.[1]}</div><div className="top-actions"><button className="outline" onClick={()=>setPage('settings')}><Settings2 size={18}/> 工具与备份</button></div></header>
       {message&&<ActionNotice key={messageState.id} message={message} onDismiss={()=>setMessage('')}/> }
       {!data ? <div className="loading">正在打开本地工作台…</div> : <div className="content">
-      {page==='dev-inbox'&&<DevInbox snapshot={inbox.snapshot} error={inbox.error} projects={data.longProjects} onRefresh={inbox.refresh}/>}
-      {page==='projects'&&<ProjectPage inbox={inbox} data={data} onRefresh={()=>refresh(date)} onCreate={create} onEdit={editNode} onDelete={deletePlanning} onStatus={setStatus} onFocusTask={focusTask} onSchedule={scheduleAssignment} onUnschedule={unscheduleAssignment}/>}
+      {(page==='home'||page==='projects'||page==='cycles')&&<UnifiedWorkbench data={data} page={page} onRefresh={()=>refresh(date)}/>}
+      {page==='timeReview'&&<TimeReview data={data} onRefresh={()=>refresh(date)}/>}
+      {page==='legacyProjects'&&<ProjectPage data={data} onRefresh={()=>refresh(date)} onCreate={create} onEdit={editNode} onDelete={deletePlanning} onStatus={setStatus} onFocusTask={focusTask} onSchedule={scheduleAssignment} onUnschedule={unscheduleAssignment}/>}
 
-        {page==='home'&&<HomeOverview data={data} cycle={cycle} onCreate={create} onEdit={editNode} onDelete={deletePlanning} onStatus={setStatus} onCalendar={()=>{setDate(localDate());setCalendarMode('week');setPage('calendar')}} onOpenDay={day=>{setDate(day);setCalendarMode('day');setPage('calendar')}} onCycles={()=>setPage('cycles')} onPool={(kind,filters)=>{setSelectedCycle(filters.cycle==='__none'?'__unassigned':filters.cycle||null);setFocusedTaskId(null);setTaskPool(kind);setPoolRequest({filters,nonce:Date.now()});setPage('tasks');}}/>}
-        {page==='cycles'&&<><div className="page-heading"><div><div className="kicker">计划地图</div><h1>{cyclePlanTitle(cycle)}</h1><p>年度方向定主题，年度目标定结果，12 周计划承接每一轮行动。</p></div><div className="heading-actions"><Select aria-label="选择12周周期" value={cycle?.id||'__unassigned'} onChange={e=>setSelectedCycle(e.target.value)}><option value="__unassigned">未归属周期</option>{data.cycles.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}</Select><button className="primary" onClick={()=>create('cycle',{start_date:localDate()})}><Plus size={16}/> 新周期</button>{cycle&&<><button className="outline" onClick={()=>create('cycle',{title:cycle.title,start_date:cycle.start_date},cycle.id)}>编辑周期</button><button className="outline danger" onClick={()=>deleteCycle(cycle.id)}>删除周期</button></>}</div></div>
+        {page==='legacyHome'&&<HomeOverview data={data} cycle={cycle} onCreate={create} onEdit={editNode} onDelete={deletePlanning} onStatus={setStatus} onCalendar={()=>{setDate(localDate());setCalendarMode('week');setPage('calendar')}} onOpenDay={day=>{setDate(day);setCalendarMode('day');setPage('calendar')}} onCycles={()=>setPage('cycles')} onPool={(kind,filters)=>{setSelectedCycle(filters.cycle==='__none'?'__unassigned':filters.cycle||null);setFocusedTaskId(null);setTaskPool(kind);setPoolRequest({filters,nonce:Date.now()});setPage('tasks');}}/>}
+        {page==='legacyCycles'&&<><div className="page-heading"><div><div className="kicker">计划地图</div><h1>{cyclePlanTitle(cycle)}</h1><p>年度方向定主题，年度目标定结果，12 周计划承接每一轮行动。</p></div><div className="heading-actions"><Select aria-label="选择12周周期" value={cycle?.id||'__unassigned'} onChange={e=>setSelectedCycle(e.target.value)}><option value="__unassigned">未归属周期</option>{data.cycles.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}</Select><button className="primary" onClick={()=>create('cycle',{start_date:localDate()})}><Plus size={16}/> 新周期</button>{cycle&&<><button className="outline" onClick={()=>create('cycle',{title:cycle.title,start_date:cycle.start_date},cycle.id)}>编辑周期</button><button className="outline danger" onClick={()=>deleteCycle(cycle.id)}>删除周期</button></>}</div></div>
           <p className="cycle-dates">{cycle?`${cycle.start_date} — ${addDays(cycle.start_date,83)}`:'未归属周期：重新指定周期后，可继续安排周次'}</p>
 <FoldSection title="计划关系树" description="年度方向 → 年度目标 → 本轮待办 → 周任务 → 日任务" expanded={treeExpanded} onToggle={()=>setTreeExpanded(value=>!value)}><PlanningTree key={treeScope} data={data} cycleId={cycle?.id||null} onCreate={create} onBatch={openBatch} onEdit={editTreeNode} onDelete={deleteNode} collapsed={collapsed} setCollapsed={setCollapsed} onStatus={(kind,id,status)=>setStatus(({task:'tasks',assignment:'week_assignments',dayTask:'day_tasks'} as Record<string,string>)[kind],id,status)} onAnnual={(id,status)=>{const row=data.annualGoals.find(a=>a.id===id);if(row)toggleAnnual(row,status);}}/></FoldSection>
 <FoldSection title="年度目标卡片" description="查看年度目标、完成状态和关联待办" expanded={annualExpanded} onToggle={()=>setAnnualExpanded(value=>!value)}><AnnualCards data={data} year={annualYear} onYear={setAnnualYear} cycleId={cycle?.id||''} create={create} edit={editNode} deleteAnnual={deleteAnnual} toggleAnnual={toggleAnnual} focusTask={focusTask}/></FoldSection>

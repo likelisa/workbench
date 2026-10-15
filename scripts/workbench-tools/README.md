@@ -1,42 +1,35 @@
-# 个人工作台 MCP
+# 个人工作台管理 MCP
 
-`server.py` 是无第三方依赖的 Python 3 stdio MCP 适配器。安装后从 macOS 应用数据目录运行，不依赖源码、当前目录或 worktree。
+`server.py` 是无第三方依赖的 Python 3 stdio MCP 适配器。稳定入口位于 `~/Library/Application Support/com.personal.workbench/ai-tools/server.py`，不依赖源码或 worktree。
 
-## 安装
+运行 `python3 scripts/workbench-tools/install.py` 安装项目级管理工具，并备份原有数据库、配置与规则。专用项目为 `~/Desktop/codex/工作台助手`；项目配置位于 `.codex/config.toml`。旧聊天未加载新配置时需重新打开。
 
-运行 `python3 scripts/workbench-tools/install.py`。先备份数据库、Codex 配置和全局规则，然后追加全局提交工具、创建 `~/Desktop/codex/工作台助手` 及其项目级管理工具配置。重复安装保留其他配置。已打开的聊天如未加载新工具，需要重新打开；不能把配置写入成功视为所有旧聊天已经接通。
+## 可用工具
 
-新链路真实验收通过后运行 `python3 scripts/workbench-tools/install.py --retire-legacy`：仅移除本项目 collector 的 Stop Hook，卸载对应 LaunchAgent，保留原始队列、已有收件箱和其他 Hook。
+- query：查询全部业务对象，返回版本；支持搜索、项目、周期、上级、周次和日期筛选及分页。
+- execute_operation：执行用户明确指定的一项业务操作；修改需当前版本。新增待办、重复事项和删除不可绕过草稿。
+- create_draft / revise_draft / query_drafts / confirm_draft / cancel_draft：预演、保存、修订、查询、确认或取消方案。缺失上级用ref/$ref引用，目标时间分类可用goal:$ref。
+- set_task_status：明确修改一条任务状态，不联动其他层级。
+- statistics：按上海日期统计任务状态、计划分钟、已记录用时及分类分布。
+- review_snapshot / save_review：生成年度或十二周快照并保存有依据的复盘。
+- operation_receipt：查询原request_id结果，超时重试不换编号。
 
-## 数据路径与能力
+完整助手规则在 [ASSISTANT.md](ASSISTANT.md)，不加载日程skill。支持方向、年度目标、周期、三层任务、项目及项目类型/阶段/规划/进展、计划时段、每日模板、重复事项、时间记录和分类颜色。分类结构沿用现有制度，备份恢复保留在桌面端。
 
-应用数据目录：`~/Library/Application Support/com.personal.workbench`。
+App必须运行。通过本机Unix socket及manage/weixin独立凭据调用业务服务，不暴露数据库或任意SQL。微信模式从桥接写入的可信上下文读取用户、消息和真实确认文本；仅授权的单一账号可操作自己的草稿。新增任务和删除在服务端强制确认。拥有完整本机权限的用户或进程仍可访问本机数据，这不是多用户隔离系统。
 
-- `ai-tools/server.py`：稳定工具入口。
-- `ai-tools/submissions/`：原子写入的提交，支持多进程文件锁。
-- `ai-tools/processed/`：导入后的原始提交，用于重试去重。
-- `ai-tools/receipts/`：按提交编号哈希保存的回执。
-- `ai-tools/capabilities.json`：submit/manage 两个能力凭据，仅当前用户可读写。
-- `ai.sock`：App 启动的本机 Unix socket，退出后不可用，不监听网络端口。
-- 数据库 `ai_operations`、`ai_audit`：请求去重、前后值与操作记录。
-- `ai_snapshots`、`ai_reviews`：不可覆盖的复盘快照、报告版本。
+草稿以SAVEPOINT预演后回滚业务写入，返回全部新增、删除及关联影响；提交在单个事务内完成并通知界面刷新。草稿采用保守的全部业务数据指纹，期间任何业务数据变化都要求修订和再次确认；内部草稿、审计和回执不会使其他草稿失效。直接修改使用目标记录version。所有写操作去重并记录审计；在线备份失败返回backup_error。
 
-全局只有 submit_todos、todo_receipt；专用助手项目额外开放 query、create_task、set_task_status、review_snapshot、save_review、operation_receipt。管理接口不开放 SQL、删除、批量重排和恢复备份。能力范围防止误调用，不隔离拥有完整本机权限的 Agent。
+桌面manage入口的confirm_draft需要confirmation_text；微信入口忽略模型传入的确认文本，读取后续真实微信消息，仅接受“确认 草稿编号 版本”，或唯一待确认草稿时的“确认”。服务端只将status=saved视为业务保存成功。旧create_task不再向MCP开放，App本身仍可使用原创建入口。
 
-TODO 回执 queued 仅代表已持久暂存，imported 才代表数据库已有记录。App 每两秒导入，不扫描聊天，不调用模型提取。request_id 在重试时必须不变，内容不同则报错。source_directory 会按 Git common-dir 归一化 worktree 来源。session_id 无法确认时留空。
+复盘基于生成时当前任务状态。年度任务按年度目标年份归属，十二周任务按周期归属；日任务、计划和时间记录按上海时区日期范围统计。计划时段和已记录用时分开统计；现有规则可能由带时间的日任务生成时间记录，不能将所有记录都视为经核实的实际投入。没有历史证据时不推测历史变化。
 
-管理写操作在同一数据库事务中保存业务记录、请求结果和审计记录；提交后沿用每日在线备份，通知界面刷新。备份失败时返回 backup_error，业务提交不会被谎报为回滚。修改状态必须携带 query 返回的 version；冲突要重新确认新状态，不盲目重试。
-
-## 复盘口径
-
-年度任务按年度目标年份归属；十二周任务按 cycle_id 归属。日任务、计划、时间记录按上海时区日期范围统计。十二周范围是周期开始日到第 84 天，跨界时间记录只计算范围内部分。完成率基于生成时当前状态。计划时段、已记录用时分开；已有业务规则可能从带时间的日任务生成时间记录，不能宣称它们都是实际计时。没有历史状态证据时不推测历史变化。
-
-先 review_snapshot，后 save_review。evidence 必须是快照 data 中存在的 JSON Pointer。新版本使用新 request_id，重试使用旧编号。报告在 App「复盘统计 → AI 复盘」查看。
+开发后续事项收集已取消。历史数据表和原始文件只作保留备份，当前 App 和工具不再读取或导入它们。
 
 ## 验证
 
 Python：`python3 -m unittest discover -s scripts/workbench-tools -p 'test_*.py'`
 
-Rust：`cargo test --manifest-path src-tauri/Cargo.toml --lib ai_service::tests`
+Rust：`cargo test --manifest-path src-tauri/Cargo.toml --lib`
 
-调试版支持 `WORKBENCH_TEST_DATA_DIR` 指向独立测试数据目录，界面数据库和本机工具接口使用同一目录；发布版忽略该变量。工具测试可用 `--root` 指向该目录。测试不得以手工补收或直接修改数据库替代真实 MCP 调用。
+调试 App 支持 `WORKBENCH_TEST_DATA_DIR` 指向独立测试目录，MCP 可用 `--root` 指向同一目录。正式 App 忽略该变量。验收写入必须通过工具和 App，不直接修改数据库。

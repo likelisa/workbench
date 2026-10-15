@@ -6,7 +6,7 @@ fn text<'a>(v:&'a Map<String,Value>,k:&str)->&'a str{v.get(k).and_then(Value::as
 fn nullable(v:&Map<String,Value>,k:&str)->Option<String>{let s=text(v,k);if s.is_empty(){None}else{Some(s.to_string())}}
 fn exists(tx:&Transaction,table:&str,id:&str)->Result<bool,String>{tx.query_row(&format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id=?)"),[id],|r|r.get(0)).map_err(|e|e.to_string())}
 fn fail<T:std::fmt::Display>(e:T)->String{e.to_string()}
-fn migrate_in(c:&mut Connection)->Result<(),String>{
+pub(crate) fn migrate_in(c:&mut Connection)->Result<(),String>{
  let tx=c.transaction().map_err(fail)?;
  // Create the project table before adding foreign keys to existing task tables.
  tx.execute_batch("CREATE TABLE IF NOT EXISTS project_types(id TEXT PRIMARY KEY,title TEXT NOT NULL UNIQUE,sort_order INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS long_projects(id TEXT PRIMARY KEY,title TEXT NOT NULL,type_id TEXT REFERENCES project_types(id) ON DELETE SET NULL,description TEXT NOT NULL DEFAULT '',focus TEXT NOT NULL DEFAULT '',links TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'preparing' CHECK(status IN ('preparing','active','paused','archived')),favorite INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);").map_err(fail)?;

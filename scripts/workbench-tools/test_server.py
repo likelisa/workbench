@@ -1,4 +1,3 @@
-import concurrent.futures
 import importlib.util
 import json
 from pathlib import Path
@@ -9,38 +8,31 @@ spec=importlib.util.spec_from_file_location('server',Path(__file__).with_name('s
 s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 
 class ToolsTests(unittest.TestCase):
- def setUp(self):
-  self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
-  self.root=Path(self.temp.name);self.b=s.Bridge(self.root)
-  self.b.rpc=lambda *_: (_ for _ in ()).throw(RuntimeError('App closed'))
-  self.args={'request_id':'stable-id','source_directory':str(self.root),'todos':[{'title':'测试待办','body':'具体做法','quote':'后续测试待办','priority':'P1'}]}
- def test_offline_receipt_and_replay(self):
-  a=self.b.submit(self.args);b=self.b.submit(self.args)
-  self.assertEqual(a,b);self.assertEqual(a['status'],'queued')
-  self.assertEqual(len(list((self.root/'ai-tools/submissions').glob('*.json'))),1)
- def test_reused_request_cannot_change_payload(self):
-  self.b.submit(self.args);self.args['todos'][0]['title']='不同内容'
-  with self.assertRaises(ValueError):self.b.submit(self.args)
- def test_parallel_submissions_and_retries(self):
-  def submit(i):return self.b.submit({**self.args,'request_id':str(i%4)})
-  with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:list(pool.map(submit,range(24)))
-  self.assertEqual(len(list((self.root/'ai-tools/submissions').glob('*.json'))),4)
- def test_import_receipt_survives_archival(self):
-  self.b.submit(self.args);key=s.digest('stable-id');home=self.root/'ai-tools'
-  s.atomic(home/'receipts'/f'{key}.json',{'status':'imported','count':1})
-  (home/'processed').mkdir();(home/'submissions'/f'{key}.json').rename(home/'processed'/f'{key}.json')
-  self.assertEqual(self.b.submit(self.args)['status'],'imported')
- def test_scope_limits_and_invalid_payloads(self):
-  self.assertEqual({t['name'] for t in s.tools('submit')},{'submit_todos','todo_receipt'})
-  with self.assertRaises(ValueError):self.b.call('query',{'kind':'task'})
-  self.args['todos'][0]['quote']=''
-  with self.assertRaises(ValueError):self.b.submit(self.args)
- def test_worktree_identity(self):
-  import subprocess
-  repo=self.root/'repo';repo.mkdir();worktree=self.root/'worktree'
-  def git(*args):subprocess.run(['git','-C',str(repo),*args],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-  git('init');git('-c','user.name=Test','-c','user.email=test@example.invalid','commit','--allow-empty','-m','test');git('worktree','add','--detach',str(worktree))
-  self.assertEqual(s.project_root(str(repo)),s.project_root(str(worktree)))
+ def test_weixin_scope_is_forced_and_has_no_model_confirmation_field(self):
+  import os
+  from unittest.mock import patch
+  with patch.dict(os.environ,{'WORKBENCH_WEIXIN_ROOT':'/tmp/trusted-bridge'}):
+   self.assertEqual(s.Bridge(scope='manage').scope,'weixin')
+  confirm=next(t for t in s.tools('weixin') if t['name']=='confirm_draft')
+  self.assertNotIn('confirmation_text',confirm['inputSchema']['properties'])
+  self.assertIn('confirmation_text',next(t for t in s.tools('manage') if t['name']=='confirm_draft')['inputSchema']['properties'])
+ def test_removed_tools_are_rejected_before_connection(self):
+  with tempfile.TemporaryDirectory() as d:
+   bridge=s.Bridge(Path(d))
+   for name in ['submit_todos','todo_receipt','sync_submissions']:
+    with self.assertRaisesRegex(ValueError,'未知工具'):bridge.call(name,{})
+   self.assertFalse((Path(d)/'ai-tools').exists())
+ def test_app_closed_management_reports_unavailable(self):
+  with tempfile.TemporaryDirectory(dir='/tmp') as d:
+   root=Path(d);s.atomic(root/'ai-tools/capabilities.json',{'manage':'test'})
+   with self.assertRaisesRegex(RuntimeError,'工作台未打开'):s.Bridge(root).call('query',{'kind':'cycle'})
+ def test_stdio_listing_and_removed_call(self):
+  import subprocess,sys
+  requests=[{'jsonrpc':'2.0','id':1,'method':'tools/list'},{'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'submit_todos','arguments':{}}}]
+  result=subprocess.run([sys.executable,str(Path(__file__).with_name('server.py')),'--scope','manage'],input=''.join(json.dumps(r)+'\n' for r in requests),text=True,capture_output=True,check=True)
+  listing,call=[json.loads(l)['result'] for l in result.stdout.splitlines()]
+  self.assertEqual({t['name'] for t in listing['tools']},{'query','execute_operation','create_draft','revise_draft','query_drafts','confirm_draft','cancel_draft','set_task_status','statistics','review_snapshot','save_review','operation_receipt'})
+  self.assertTrue(call['isError'])
 
 class SocketTests(unittest.TestCase):
  def test_large_fragmented_unicode_response(self):

@@ -3,7 +3,7 @@ use tauri::AppHandle;
 const FIXED:&str="'睡觉','吃饭','娱乐','健身','学习','社交','恋爱','杂事'";
 fn upgraded(c:&Connection)->Result<bool,String>{c.query_row("SELECT COUNT(*) FROM pragma_table_info('categories') WHERE name='kind'",[],|r|r.get::<_,i64>(0)).map(|n|n>0).map_err(|e|e.to_string())}
 // Replacing categories removes the old global UNIQUE(name), while every original ID remains intact.
-fn upgrade(c:&mut Connection)->Result<(),String>{
+pub(crate) fn upgrade(c:&mut Connection)->Result<(),String>{
  let before:i64=c.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check",[],|r|r.get(0)).map_err(|e|e.to_string())?;
  c.execute_batch("PRAGMA foreign_keys=OFF").map_err(|e|e.to_string())?;
  let tx=c.transaction().map_err(|e|e.to_string())?;
